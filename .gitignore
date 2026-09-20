@@ -1,0 +1,16 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+node_modules/
+playwright-report/
+test-results/
+
+# Evidence can contain screenshots/traces from local runs; keep curated
+# examples only (tracked explicitly), ignore scratch runs by default.
+evidence/runs/

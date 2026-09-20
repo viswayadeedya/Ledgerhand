@@ -1,0 +1,25 @@
+[project]
+name = "cua"
+version = "0.1.0"
+description = "Computer-use automation system: LLM-driven discovery, typed capability artifacts, deterministic replay, and human handoff for legacy back-office UIs."
+requires-python = ">=3.11"
+dependencies = [
+    "playwright>=1.47",
+    "anthropic>=0.40",
+    "pydantic>=2.8",
+    "python-dotenv>=1.0",
+    "flask>=3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
