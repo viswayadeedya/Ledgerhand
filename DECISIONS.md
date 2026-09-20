@@ -26,10 +26,17 @@ Ordered chronologically within each part. See /REPORT.md for the synthesized wri
   (validation errors, not-found, session expiry, popups, slow loads) — that
   requires an app whose faults we can toggle deterministically. Fake data only,
   no real PII.
-- **Fake app framework: Flask**, over a Node server or static HTML. Flask makes
-  it trivial to server-render HTML with a frameset/table layout and to gate
-  behavior (auth, fault injection) with plain session state — matching the
-  "legacy server-rendered app" profile without pulling in a frontend build step.
+- **Fake app framework: FastAPI** (with `Jinja2Templates` for server-rendered
+  HTML and Starlette's `SessionMiddleware` for cookie-based session state),
+  over Flask. Flask was the initial pick on framework-fit grounds (marginally
+  less wiring for plain server-rendered HTML), but this project's ground rules
+  require being able to defend every part of the submission in detail — since
+  FastAPI is the framework actually familiar, it's the better choice even
+  though the fit is slightly less snug out of the box. The extra wiring
+  (`Jinja2Templates`, `SessionMiddleware`, `python-multipart` for form posts)
+  is a one-time setup cost, not an ongoing one, and doesn't change anything
+  about the "legacy server-rendered app" profile the fake app needs to
+  present — frames, tables, no test IDs, toggleable faults.
 - **Architecture: single process, synchronous, no queues.** The brief explicitly
   discourages building scaling infrastructure (Section 9). Discovery, replay,
   and the fake app run as separate local processes/scripts invoked directly
