@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html><head>{% include "_style.html" %}</head>
+<body>
+<p><b>Open New Sub-Account</b> for {{ member.first_name }} {{ member.last_name }} (ID {{ member.id }})</p>
+{% if error %}<p><font color="#cc0000">{{ error }}</font></p>{% endif %}
+<form method="post" action="/app/member/{{ member.id }}/new-subaccount/review">
+<table border="0" cellpadding="4">
+<tr><td><label for="account_type">Account Type:</label></td><td>
+<select id="account_type" name="account_type">
+<option value="savings">Savings</option>
+<option value="checking">Checking</option>
+<option value="money_market">Money Market</option>
+</select></td></tr>
+<tr><td><label for="initial_deposit">Initial Deposit ($):</label></td><td><input id="initial_deposit" type="text" name="initial_deposit" value="{{ initial_deposit or '' }}"></td></tr>
+<tr><td>Opened By:</td><td><input type="text" name="opened_by" value="{{ user }}" readonly></td></tr>
+<tr><td colspan="2"><input type="submit" value="Continue"></td></tr>
+</table>
+</form>
+</body></html>

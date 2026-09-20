@@ -1,0 +1,6 @@
+<!DOCTYPE html>
+<html><head>{% include "_style.html" %}</head>
+<body>
+<p><b>Sub-account #{{ sub_account_number }} opened</b> for {{ member.first_name }} {{ member.last_name }} (ID {{ member.id }}).</p>
+<p><a href="/app/member/{{ member.id }}" target="main">Return to Member</a></p>
+</body></html>

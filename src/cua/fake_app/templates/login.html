@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head><title>Meridian Credit Union - Teller Sign On</title>{% include "_style.html" %}</head>
+<body>
+<table width="400" align="center" cellpadding="8" cellspacing="0" border="1" bgcolor="#ffffff">
+  <tr bgcolor="#003366"><td colspan="2"><font color="#ffffff"><b>Meridian Credit Union - Core Teller System</b></font></td></tr>
+  {% if expired %}
+  <tr><td colspan="2"><font color="#cc0000">Your session has expired. Please sign on again.</font></td></tr>
+  {% endif %}
+  {% if error %}
+  <tr><td colspan="2"><font color="#cc0000">Sign-on failed. Check your user ID and password.</font></td></tr>
+  {% endif %}
+  <form method="post" action="/login">
+  <tr><td>User ID:</td><td><input type="text" name="username"></td></tr>
+  <tr><td>Password:</td><td><input type="password" name="password"></td></tr>
+  <tr><td colspan="2" align="right"><input type="submit" value="Sign On"></td></tr>
+  </form>
+</table>
+</body>
+</html>

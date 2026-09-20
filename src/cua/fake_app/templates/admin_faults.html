@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html><head><title>Fault Admin</title></head>
+<body>
+<h1>Fault injection</h1>
+<p>Test-harness panel -- not part of the automated target surface.</p>
+<form method="post" action="/admin/reset"><button type="submit">Reset app state</button></form>
+<table border="1" cellpadding="4">
+<tr><th>Fault</th><th>Armed</th><th>Action</th></tr>
+{% for name, armed in faults.items() %}
+<tr>
+  <td>{{ name }}</td>
+  <td>{{ "yes" if armed else "no" }}</td>
+  <td>
+    <form method="post" action="/admin/faults" style="display:inline">
+      <input type="hidden" name="fault" value="{{ name }}">
+      <input type="hidden" name="armed" value="{{ 'false' if armed else 'true' }}">
+      <button type="submit">{{ "Disarm" if armed else "Arm" }}</button>
+    </form>
+  </td>
+</tr>
+{% endfor %}
+</table>
+</body></html>

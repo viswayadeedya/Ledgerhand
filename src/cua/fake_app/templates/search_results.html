@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html><head>{% include "_style.html" %}</head>
+<body>
+{% if not_found %}
+<p><b>No member found</b> matching &quot;{{ query }}&quot;.</p>
+{% elif results|length > 1 %}
+<p>Multiple members matched &quot;{{ query }}&quot;. Select the correct member:</p>
+<table border="1" cellpadding="4" cellspacing="0">
+<tr bgcolor="#cccccc"><td><b>Member ID</b></td><td><b>Last Name</b></td><td><b>First Name</b></td><td><b>Status</b></td><td></td></tr>
+{% for m in results %}
+<tr><td>{{ m.id }}</td><td>{{ m.last_name }}</td><td>{{ m.first_name }}</td><td>{{ m.status }}</td>
+<td><a href="/app/member/{{ m.id }}" target="main">View</a></td></tr>
+{% endfor %}
+</table>
+{% else %}
+<table border="1" cellpadding="4" cellspacing="0">
+<tr bgcolor="#cccccc"><td><b>Member ID</b></td><td><b>Last Name</b></td><td><b>First Name</b></td><td><b>Status</b></td><td></td></tr>
+<tr><td>{{ results[0].id }}</td><td>{{ results[0].last_name }}</td><td>{{ results[0].first_name }}</td><td>{{ results[0].status }}</td>
+<td><a href="/app/member/{{ results[0].id }}" target="main">View</a></td></tr>
+</table>
+{% endif %}
+</body></html>

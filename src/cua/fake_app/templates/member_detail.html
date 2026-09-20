@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html><head>{% include "_style.html" %}
+{% if popup %}
+<script>window.onload = function() { confirm("Notice: updated privacy policy takes effect Jan 1. Click OK to continue."); };</script>
+{% endif %}
+</head>
+<body>
+{% if member.status == 'closed' %}
+<p><b>This account is closed.</b> No balance information is available.</p>
+{% else %}
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><td><b>Member ID</b></td><td>{{ member.id }}</td></tr>
+<tr><td><b>Name</b></td><td>{{ member.first_name }} {{ member.last_name }}</td></tr>
+<tr><td><b>Status</b></td><td>{{ member.status }}</td></tr>
+<tr><td><b>Savings Balance</b></td><td>${{ "%.2f"|format(member.savings_balance) }}</td></tr>
+<tr><td><b>Checking Balance</b></td><td>${{ "%.2f"|format(member.checking_balance) }}</td></tr>
+</table>
+<p><a href="/app/member/{{ member.id }}/new-subaccount" target="main">Open New Sub-Account</a></p>
+{% endif %}
+</body></html>

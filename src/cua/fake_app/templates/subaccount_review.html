@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html><head>{% include "_style.html" %}</head>
+<body>
+<p><b>Confirm New Sub-Account</b></p>
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><td><b>Member</b></td><td>{{ member.first_name }} {{ member.last_name }} (ID {{ member.id }})</td></tr>
+<tr><td><b>Account Type</b></td><td>{{ account_type }}</td></tr>
+<tr><td><b>Initial Deposit</b></td><td>${{ "%.2f"|format(initial_deposit) }}</td></tr>
+<tr><td><b>Opened By</b></td><td>{{ opened_by }}</td></tr>
+</table>
+<form method="post" action="/app/member/{{ member.id }}/new-subaccount/commit">
+<input type="hidden" name="account_type" value="{{ account_type }}">
+<input type="hidden" name="initial_deposit" value="{{ initial_deposit }}">
+<input type="hidden" name="opened_by" value="{{ opened_by }}">
+<input type="submit" value="Confirm &amp; Open Account">
+</form>
+<p><a href="/app/member/{{ member.id }}" target="main">Cancel</a></p>
+</body></html>
