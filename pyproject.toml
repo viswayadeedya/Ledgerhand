@@ -13,6 +13,7 @@ dependencies = [
     "jinja2>=3.1",
     "python-multipart>=0.0.9",
     "itsdangerous>=2.2",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -23,6 +24,9 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"cua.guardrails" = ["*.yaml"]
 
 [build-system]
 requires = ["setuptools>=68"]

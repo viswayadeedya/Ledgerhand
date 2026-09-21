@@ -118,7 +118,44 @@ Ordered chronologically within each part. See /REPORT.md for the synthesized wri
 
 ## Part 2 — Policy / guardrails + redaction
 
-_(not yet built)_
+- **Guardrails are a standalone package the agent/replay layers call into,
+  not something baked into the prompt.** `PolicyEngine.evaluate(action)`
+  only ever sees a typed `Action` (type + url + method), never the model's
+  reasoning or transcript — a manipulated or confused LLM has no path to
+  argue its way past the check, because the check doesn't read anything the
+  model wrote.
+- **Allowlist as a YAML file, not code.** `guardrails/policy.yaml` lists
+  `allowed_domains`, `allowed_routes` (globs), `allowed_action_types`, and
+  `risky_routes`. Added `pyyaml` as a new dependency specifically so this
+  file can carry comments explaining *why* a route is allowed or risky —
+  the brief calls out that both a human reviewer and a calling agent need
+  to understand the policy, and a commented YAML file reviews better than a
+  Python dict literal. Path is overridable via `GUARDRAILS_POLICY_PATH`,
+  foreshadowing the multi-tenant story (Section 3.7): each tenant could ship
+  its own policy file without touching code.
+- **Risky/irreversible actions are blocked by default, not merely flagged.**
+  `risky_action_default: block` in the policy file means a route matching
+  `risky_routes` (currently just `*/new-subaccount/commit`) is refused
+  unless the caller explicitly passes `human_approved=True`. This is the
+  conservative end of the spectrum the brief offers ("block, require
+  confirmation, or flag — your call") — for money-moving actions in a
+  banking context, failing closed is the safer default, and the escalation
+  path (Part 7) is exactly how a human supplies that approval.
+  Full reasoning in `/REPORT.md` Section 6.
+- **Redaction is key-name-based first, pattern-based second.** `redact_value`
+  recursively masks any dict key matching a sensitive-name list (password,
+  session, token, ssn, etc.) regardless of content; `redact_text` also
+  regex-masks SSN- and card-shaped strings that might appear in free text
+  (e.g. OCR'd screenshot text or a log message). This is explicitly a
+  best-effort net, not a guarantee — documented as a stated limitation
+  rather than oversold.
+- **Action vocabulary defined here, before the surface layer exists.**
+  `guardrails/models.py` defines `ActionType` (navigate/click/fill/select/
+  read/submit/wait/dismiss_dialog) and the `Action` model as the contract
+  Part 3 (surface) and Part 4 (agent loop) will produce. Guardrails needed
+  *some* stable shape to check against, and keeping it deliberately thin
+  (no coordinates, no selector detail) means the surface layer is free to
+  choose its own targeting strategy without the guardrail layer caring.
 
 ## Part 3 — Surface interface
 

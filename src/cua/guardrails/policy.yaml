@@ -1,0 +1,36 @@
+# Guardrail policy for the fake Meridian Credit Union teller app.
+#
+# This file is the allowlist: anything the agent or replay engine tries to do
+# that isn't covered here is blocked before it reaches the browser, no matter
+# what the LLM decided. Per-tenant deployments would ship their own copy of
+# this file (see GUARDRAILS_POLICY_PATH) rather than editing code.
+
+allowed_domains:
+  - "127.0.0.1:5055"
+
+# Glob patterns matched against the URL path (not the domain).
+allowed_routes:
+  - "/login"
+  - "/logout"
+  - "/app"
+  - "/app/*"
+
+allowed_action_types:
+  - navigate
+  - click
+  - fill
+  - select
+  - read
+  - submit
+  - wait
+  - dismiss_dialog
+
+# Routes matching any of these globs are classified risky/irreversible
+# (they create or change durable state a person can't easily undo).
+risky_routes:
+  - "*/new-subaccount/commit"
+
+# What happens to a risky action by default: "block" refuses it outright
+# unless the caller explicitly marks it human-approved; "allow" would let it
+# through unattended. We default to "block" -- see REPORT.md Section 6.
+risky_action_default: "block"
