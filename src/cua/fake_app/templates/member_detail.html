@@ -15,6 +15,15 @@
 <tr><td><b>Savings Balance</b></td><td>${{ "%.2f"|format(member.savings_balance) }}</td></tr>
 <tr><td><b>Checking Balance</b></td><td>${{ "%.2f"|format(member.checking_balance) }}</td></tr>
 </table>
+{% if member.sub_accounts %}
+<p><b>Sub-Accounts</b></p>
+<table border="1" cellpadding="4" cellspacing="0">
+<tr bgcolor="#cccccc"><td><b>#</b></td><td><b>Type</b></td><td><b>Initial Deposit</b></td><td><b>Opened By</b></td></tr>
+{% for sa in member.sub_accounts %}
+<tr><td>{{ sa.number }}</td><td>{{ sa.account_type }}</td><td>${{ "%.2f"|format(sa.initial_deposit) }}</td><td>{{ sa.opened_by }}</td></tr>
+{% endfor %}
+</table>
+{% endif %}
 <p><a href="/app/member/{{ member.id }}/new-subaccount" target="main">Open New Sub-Account</a></p>
 {% endif %}
 </body></html>
