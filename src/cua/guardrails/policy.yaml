@@ -24,6 +24,8 @@ allowed_action_types:
   - submit
   - wait
   - dismiss_dialog
+  - type
+  - key
 
 # Routes matching any of these globs are classified risky/irreversible
 # (they create or change durable state a person can't easily undo).

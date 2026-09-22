@@ -12,6 +12,7 @@ from cua.core.models import (
 )
 from cua.guardrails.policy import PolicyEngine
 from cua.surface.base import Surface
+from cua.surface.keys import translate_key_sequence
 from cua.surface.locator import LocatorResolutionError, resolve
 from cua.surface.perceive import candidates_from_description, describe_point, link_info, scan_frame
 
@@ -76,10 +77,18 @@ class PlaywrightSurface(Surface):
         )
 
     def _screenshot(self) -> str:
+        _, path = self.capture_screenshot()
+        return path
+
+    def capture_screenshot(self) -> tuple[bytes, str]:
+        """Saves a screenshot to the evidence dir and also returns the raw
+        bytes, so a caller (e.g. the discovery loop, to hand to the model)
+        doesn't have to re-read the file it was just written to.
+        """
         self._step += 1
         path = self.evidence_dir / f"step_{self._step:03d}.png"
-        self.page.screenshot(path=str(path))
-        return str(path)
+        data = self.page.screenshot(path=str(path))
+        return data, str(path)
 
     # ---- action ---------------------------------------------------------
 
@@ -93,6 +102,8 @@ class PlaywrightSurface(Surface):
             ActionType.READ: self._do_read,
             ActionType.WAIT: self._do_wait,
             ActionType.DISMISS_DIALOG: self._do_dismiss_dialog,
+            ActionType.TYPE: self._do_type,
+            ActionType.KEY: self._do_key,
         }.get(action.type)
         if handler is None:
             return ActionResult(success=False, error=f"unsupported action type: {action.type}")
@@ -101,7 +112,7 @@ class PlaywrightSurface(Surface):
         except LocatorResolutionError as exc:
             return ActionResult(success=False, error=str(exc))
 
-    def _scope_for(self, frame_name: str | None):
+    def scope_for(self, frame_name: str | None):
         if frame_name is None:
             return self.page
         frame = self.page.frame(name=frame_name)
@@ -138,7 +149,7 @@ class PlaywrightSurface(Surface):
     def _resolve_target(self, action: Action):
         """Returns (locator, winning_candidate, predicted_url, predicted_method)."""
         if action.target is not None:
-            scope = self._scope_for(action.target.frame)
+            scope = self.scope_for(action.target.frame)
             locator, candidate = resolve(scope, action.target.candidates)
             info = link_info(locator)
             return locator, candidate, self._absolute(info.get("url")), info.get("method")
@@ -147,7 +158,7 @@ class PlaywrightSurface(Surface):
             if desc is None:
                 raise LocatorResolutionError(f"no element at point ({action.point.x}, {action.point.y})")
             candidates = candidates_from_description(desc)
-            scope = self._scope_for(desc.get("frame"))
+            scope = self.scope_for(desc.get("frame"))
             locator, candidate = resolve(scope, candidates)
             url = desc.get("href") or desc.get("form_action")
             return locator, candidate, self._absolute(url), desc.get("form_method")
@@ -182,7 +193,7 @@ class PlaywrightSurface(Surface):
     def _do_fill(self, action: Action, human_approved: bool) -> ActionResult:
         if action.target is None:
             raise LocatorResolutionError("fill requires an explicit target")
-        scope = self._scope_for(action.target.frame)
+        scope = self.scope_for(action.target.frame)
         locator, candidate = resolve(scope, action.target.candidates)
         decision = self.policy.evaluate(action, human_approved=human_approved)
         if not decision.allowed:
@@ -198,7 +209,7 @@ class PlaywrightSurface(Surface):
     def _do_select(self, action: Action, human_approved: bool) -> ActionResult:
         if action.target is None:
             raise LocatorResolutionError("select requires an explicit target")
-        scope = self._scope_for(action.target.frame)
+        scope = self.scope_for(action.target.frame)
         locator, candidate = resolve(scope, action.target.candidates)
         decision = self.policy.evaluate(action, human_approved=human_approved)
         if not decision.allowed:
@@ -217,11 +228,37 @@ class PlaywrightSurface(Surface):
     def _do_wait(self, action: Action, human_approved: bool) -> ActionResult:
         if action.value:
             try:
+                seconds = float(action.value)
+                self.page.wait_for_timeout(seconds * 1000)
+                return ActionResult(success=True, observation=self.observe())
+            except ValueError:
+                pass
+            try:
                 self.page.get_by_text(action.value).first.wait_for(timeout=5000)
             except Exception as exc:
                 return ActionResult(success=False, error=str(exc))
         else:
             self.page.wait_for_timeout(500)
+        return ActionResult(success=True, observation=self.observe())
+
+    def _do_type(self, action: Action, human_approved: bool) -> ActionResult:
+        """Types at whatever element currently has focus, the way the
+        discovery loop's browser toolset works (click to focus, then type --
+        no locator involved). Never used by deterministic replay.
+        """
+        decision = self.policy.evaluate(action, human_approved=human_approved)
+        if not decision.allowed:
+            return ActionResult(success=False, blocked=True, policy_reason=decision.reason)
+        self.page.keyboard.type(action.value or "")
+        return ActionResult(success=True, observation=self.observe())
+
+    def _do_key(self, action: Action, human_approved: bool) -> ActionResult:
+        decision = self.policy.evaluate(action, human_approved=human_approved)
+        if not decision.allowed:
+            return ActionResult(success=False, blocked=True, policy_reason=decision.reason)
+        for key_spec in translate_key_sequence(action.value or ""):
+            self.page.keyboard.press(key_spec)
+        self._settle()
         return ActionResult(success=True, observation=self.observe())
 
     def _do_dismiss_dialog(self, action: Action, human_approved: bool) -> ActionResult:

@@ -116,6 +116,80 @@ _SCAN_JS = """
 }
 """
 
+_SCAN_DESCRIBE_JS = """
+() => {
+  const sel = 'a,button,input,select,textarea';
+  function ariaLabel(node) { return node.getAttribute && node.getAttribute('aria-label'); }
+  function labelText(node) {
+    if (node.labels && node.labels.length) return node.labels[0].textContent.trim();
+    if (node.id) {
+      const lbl = document.querySelector(`label[for="${node.id}"]`);
+      if (lbl) return lbl.textContent.trim();
+    }
+    return null;
+  }
+  function roleOf(node) {
+    const explicit = node.getAttribute && node.getAttribute('role');
+    if (explicit) return explicit;
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'a' && node.href) return 'link';
+    if (tag === 'button') return 'button';
+    if (tag === 'input') {
+      const t = (node.getAttribute('type') || 'text').toLowerCase();
+      if (t === 'submit' || t === 'button') return 'button';
+      if (t === 'checkbox') return 'checkbox';
+      if (t === 'hidden') return null;
+      return 'textbox';
+    }
+    if (tag === 'select') return 'combobox';
+    if (tag === 'textarea') return 'textbox';
+    return null;
+  }
+  function isPassword(node) {
+    return node.tagName.toLowerCase() === 'input' && (node.getAttribute('type') || '').toLowerCase() === 'password';
+  }
+  function tablePos(node) {
+    const cell = node.closest('td,th');
+    if (!cell) return null;
+    const row = cell.parentElement;
+    const table = cell.closest('table');
+    if (!row || !table) return null;
+    const col = Array.prototype.indexOf.call(row.children, cell);
+    const rowIdx = Array.prototype.indexOf.call(table.querySelectorAll('tr'), row);
+    return {row: rowIdx, col: col};
+  }
+  function cssPath(node) {
+    const parts = [];
+    let cur = node;
+    for (let i = 0; i < 5 && cur && cur.nodeType === 1; i++) {
+      let part = cur.tagName.toLowerCase();
+      if (cur.parentElement) {
+        const idx = Array.prototype.indexOf.call(cur.parentElement.children, cur) + 1;
+        part += ':nth-child(' + idx + ')';
+      }
+      parts.unshift(part);
+      cur = cur.parentElement;
+    }
+    return parts.join(' > ');
+  }
+  const nodes = Array.from(document.querySelectorAll(sel)).slice(0, 150);
+  return nodes
+    .filter(n => n.offsetParent !== null)
+    .map(n => ({
+      tag: n.tagName.toLowerCase(),
+      role: roleOf(n),
+      aria_label: ariaLabel(n),
+      label_text: labelText(n),
+      text: (n.innerText || n.value || '').trim().slice(0, 80),
+      table: tablePos(n),
+      css: cssPath(n),
+      is_password: isPassword(n),
+    }))
+    .filter(e => e.role)
+    .slice(0, 60);
+}
+"""
+
 _ELEMENT_LINK_INFO_JS = """
 (el) => {
   const formEl = el.closest('form');
@@ -177,6 +251,15 @@ def candidates_from_description(desc: dict) -> list[LocatorCandidate]:
 
 def scan_frame(scope) -> list[dict]:
     return scope.evaluate(_SCAN_JS)
+
+
+def scan_frame_described(scope) -> list[dict]:
+    """Like scan_frame, but returns the fuller descriptor (role/aria_label/
+    label_text/text/table/css) that candidates_from_description() needs --
+    used by read_page/find so every ref they hand out already carries a
+    ranked locator, not just a role+name summary.
+    """
+    return scope.evaluate(_SCAN_DESCRIBE_JS)
 
 
 def link_info(locator) -> dict:

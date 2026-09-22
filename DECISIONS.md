@@ -224,7 +224,67 @@ Ordered chronologically within each part. See /REPORT.md for the synthesized wri
 
 ## Part 4 — Agent loop
 
-_(not yet built)_
+- **Toolset: `browser_toolset_20260801`, not the generic OS-level
+  `computer_toolset_20260801`.** Checked both against the current Anthropic
+  docs before writing any code (per the earlier note to verify tool
+  version/beta header rather than guess). The browser toolset gives the
+  model an accessibility-tree-style `read_page`/`find` (ref-based element
+  references) *alongside* coordinate fallback, is explicitly documented as
+  "designed to complement Playwright... wrapping an existing
+  Playwright-controlled page," and runs with no beta header on
+  `claude-sonnet-5` (our default `DISCOVERY_MODEL`) and `claude-opus-5` (our
+  fallback). This is a much closer match to the brief's "bias toward an
+  approach that would still work when the surface has no clean DOM" than
+  raw screenshot+coordinate clicking would have been, and it lets discovery
+  reuse essentially all of Part 3's locator-ranking work directly instead of
+  building a parallel coordinate-only path.
+- **We own the ref registry, not the API.** Per Anthropic's docs, a client
+  toolset's `read_page`/`find` refs (`ref_1`, etc.) are assigned and tracked
+  entirely by the calling application. `agent/refs.py`'s `RefRegistry` maps
+  each ref to a `Target` (frame + ranked `LocatorCandidate`s) built the same
+  way Part 3's coordinate hit-testing builds one -- so a ref the model clicks
+  and a coordinate the model clicks both resolve through the identical
+  strict-single-match locator resolver. Frames get their own refs too
+  (`frame_nav`, `frame_main`, ...), so `read_page` with no scope just lists
+  frames and the model has to explicitly drill in -- an honest reflection of
+  the frameset surface rather than silently flattening it away.
+- **Ref lifetime is approximated, not exact.** The spec says refs stay valid
+  "until tab navigates or DOM changes." We don't have a DOM-mutation
+  observer wired in, so refs are cleared on the actions most likely to
+  change the page (`navigate`, `left_click`, an Enter `key` press) and kept
+  otherwise (e.g. across a sequence of `form_input` calls). Good enough for
+  this project's stable, non-adversarial UI; documented as a scope cut
+  rather than silently assumed correct.
+- **Two custom tools sit alongside the toolset**: `report_success`/
+  `report_stuck` give the loop an explicit, structured way to end (rather
+  than inferring "done" from the model going quiet), and directly produce
+  the `outputs` dict Part 5's recorder will need for the artifact's declared
+  outputs. `dismiss_dialog` exists because the browser toolset has no member
+  for native `confirm()`/`alert()` dialogs -- and because of the Part 3
+  finding that both `evaluate()` and `screenshot()` hang while one is open,
+  `read_page`/`find`/`screenshot` all check for a pending dialog first and
+  return an instructive message instead of attempting to hang.
+- **Redaction needed a second signal beyond label text.** The login
+  password field has no label, id, or aria-label at all (deliberately, per
+  Part 1's "inconsistent locator surface" design) -- so the initial
+  redaction heuristic (checking the accessible-name label for "password")
+  had nothing to match and let a real password value straight into
+  `RecordedStep.tool_input`, caught by
+  `test_password_field_is_redacted_in_recorded_steps`. Fixed by adding a
+  same-origin `is_password` flag straight from the DOM
+  (`input[type=password]`) in the element scan, carried on `RefEntry`, and
+  checked alongside the label heuristic. A concrete example of why relying
+  on a single signal for a safety property is risky.
+- **All 6 new tests in `tests/test_browser_tools.py` exercise the dispatcher
+  against the real fake app with synthetic tool_input dicts** (no API calls,
+  no tokens spent) -- read_page frame drill-down, find+click reaching member
+  detail, a stale-ref error after navigation, the risky-commit block/approve
+  path via ref-based clicks, the password redaction fix above, and the
+  dialog notice-instead-of-hang path. 26/26 tests pass repo-wide.
+- **The one thing these tests can't cover**: an actual LLM driving the loop.
+  That requires a real `ANTHROPIC_API_KEY` and is the part of Part 4 the
+  brief says can't be simulated or described -- still pending as of this
+  entry.
 
 ## Part 5 — Recorder → artifact
 

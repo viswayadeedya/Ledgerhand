@@ -20,6 +20,8 @@ class ActionType(str, Enum):
     SUBMIT = "submit"
     WAIT = "wait"
     DISMISS_DIALOG = "dismiss_dialog"
+    TYPE = "type"  # raw keystrokes at current focus -- discovery only, never replay
+    KEY = "key"  # single key or chord press -- discovery only, never replay
 
 
 class LocatorStrategy(str, Enum):
@@ -102,3 +104,16 @@ class ActionResult(BaseModel):
     resolved_strategy: LocatorStrategy | None = None
     resolved_value: str | None = None
     observation: Observation | None = None
+
+
+class RecordedStep(BaseModel):
+    """One step of a discovery run, as the recorder (Part 5) will consume it
+    to build an artifact. tool_input is pre-redacted before it ever lands
+    here -- see agent/browser_tools.py.
+    """
+
+    index: int
+    tool_name: str
+    tool_input: dict = {}
+    action: Action | None = None
+    result: ActionResult | None = None
