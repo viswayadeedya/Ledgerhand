@@ -29,6 +29,7 @@ def run_discovery(
     goal: str,
     target_url: str,
     allowed_domain: str,
+    credentials: dict[str, str] | None = None,
     model: str | None = None,
     max_steps: int = 20,
     headless: bool = True,
@@ -41,6 +42,13 @@ def run_discovery(
     Every action the model requests still passes through PolicyEngine inside
     Surface.act() -- the loop itself grants no extra trust the guardrails
     don't already enforce.
+
+    `credentials`, if given (e.g. {"username": "teller1", "password":
+    "teller123"}), goes into the system prompt in plaintext -- discovery has
+    no way to type a password without seeing it. This is a one-time,
+    necessary cost of LLM-driven discovery; deterministic replay (Part 6)
+    has no LLM in its loop at all, so it never exposes a secret to a model in
+    the first place.
     """
     model = model or os.environ.get("DISCOVERY_MODEL", "claude-sonnet-5")
     client = anthropic.Anthropic()
@@ -48,7 +56,12 @@ def run_discovery(
     surface = PlaywrightSurface(base_url=f"http://{allowed_domain}", policy=policy, headless=headless, evidence_dir=evidence_dir)
     executor = BrowserToolExecutor(surface)
 
-    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(goal=goal, target_url=target_url, allowed_domain=allowed_domain)
+    credentials_block = (
+        "\n".join(f"  {k}: {v}" for k, v in credentials.items()) if credentials else "  (none provided)"
+    )
+    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
+        goal=goal, target_url=target_url, allowed_domain=allowed_domain, credentials_block=credentials_block
+    )
     messages: list[dict] = [
         {"role": "user", "content": f"Begin. Navigate to {target_url} and accomplish the goal described in your instructions."}
     ]

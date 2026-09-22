@@ -4,6 +4,9 @@ Goal: {goal}
 
 Starting point: {target_url}
 
+Sign-on credentials (use these exactly if the application asks you to sign in; do not guess others):
+{credentials_block}
+
 Environment notes:
 - This is a legacy application. The top-level page is often just a shell -- \
 real content lives inside named frames (e.g. "banner", "nav", "main"). Call \
@@ -14,6 +17,11 @@ that ref to see what's inside it.
 IDs anywhere. Prefer read_page/find over screenshot+coordinates when you can \
 -- element references are far more reliable than pixel guessing on this kind \
 of page.
+- For filling in a text field you already have a ref for, prefer form_input \
+over click-then-type: form_input sets the value on that exact element \
+directly, while click-then-type depends on focus actually landing (and \
+staying) where you clicked, which is easy to get wrong on a page with no \
+labels.
 - Some screens can show an unexpected native browser dialog (a confirm/alert \
 popup). If read_page, find, or screenshot tells you a dialog is open, call \
 dismiss_dialog before doing anything else.

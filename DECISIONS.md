@@ -280,11 +280,51 @@ Ordered chronologically within each part. See /REPORT.md for the synthesized wri
   no tokens spent) -- read_page frame drill-down, find+click reaching member
   detail, a stale-ref error after navigation, the risky-commit block/approve
   path via ref-based clicks, the password redaction fix above, and the
-  dialog notice-instead-of-hang path. 26/26 tests pass repo-wide.
-- **The one thing these tests can't cover**: an actual LLM driving the loop.
-  That requires a real `ANTHROPIC_API_KEY` and is the part of Part 4 the
-  brief says can't be simulated or described -- still pending as of this
-  entry.
+  dialog notice-instead-of-hang path.
+- **The live run: done, and it took several real attempts to get right.**
+  With the user's own `ANTHROPIC_API_KEY`, `claude-sonnet-5` genuinely drove
+  the fake app end to end for "Look up member 10001 and read their current
+  savings balance," landing on the correct balance ($2340.18) and calling
+  `report_success` with structured outputs matching the goal. Evidence is in
+  `/evidence/discovery-member-lookup/` (screenshots + full step log); see
+  that folder's own README for the blow-by-blow. Three things had to be
+  fixed along the way, each a genuine bug the live run exposed that no unit
+  test had (or could have, without knowing to look):
+  1. The first attempt never logged in -- it had no credentials. Discovery
+     needs sign-on values supplied out-of-band, the way a real operator
+     would give them, not guessed. Added a `credentials` param to
+     `run_discovery()`, injected into the system prompt.
+  2. Early attempts burned most of their step budget mistyping into the
+     login form's deliberately unlabeled fields via click-then-`type`.
+     Fixed by recommending `form_input` (direct, ref-targeted, can't lose
+     focus) over click-then-`type` in the system prompt -- cut a
+     ~40-step, timed-out run down to a clean 15-step success.
+  3. **The password leaked into the run log three times, at three separate
+     layers, needing three separate fixes** -- this is the one worth
+     defending in detail:
+     - `RecordedStep.tool_input`: the model's own call with the literal
+       value. Fixed by redacting when the target/focused field is
+       `type=password` -- but this alone wasn't enough, see next.
+     - `ActionResult.observation.elements[].text`: a *different* code path
+       (`Surface.observe()`'s DOM scan, used by every action's result, not
+       just typing ones) reads every input's live `.value` directly, which
+       for a password field is always plaintext -- the browser only masks
+       it visually. Redacting the model's call did nothing for this, since
+       it's an independent re-scan of the live page, not a copy of what was
+       typed. Fixed at the source: the scan JS itself now returns `''` for
+       any `input[type=password]`, so no current or future consumer of
+       `Observation.elements` can leak it by forgetting to redact.
+     - `RecordedStep.action.value`: the internal `Action` object needs the
+       *real* password to actually perform the fill -- and that same object
+       was going straight into the log. Fixed by logging a redacted copy
+       (`action.model_copy(update={"value": "***REDACTED***"})`) built
+       *after* execution, never the object used to act.
+     Each fix has a regression test (`tests/test_browser_tools.py`,
+     `tests/test_surface.py`) reproducing the exact scenario that leaked --
+     29/29 tests pass repo-wide. The broader lesson, worth carrying into
+     Part 5/6/8: a secret in this system can flow through more than one
+     path to a log or artifact, and redacting the path you're looking at
+     is not the same as redacting the value everywhere it can appear.
 
 ## Part 5 — Recorder → artifact
 

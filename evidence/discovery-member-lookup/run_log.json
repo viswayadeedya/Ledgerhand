@@ -1,0 +1,878 @@
+{
+  "goal": "Look up member 10001 and read their current savings balance.",
+  "target_url": "http://127.0.0.1:5055/login",
+  "allowed_domain": "127.0.0.1:5055",
+  "model": "claude-sonnet-5",
+  "outcome": "success",
+  "summary": "Logged in as teller1, looked up member 10001 (Maria Garcia, active status). Their current savings balance is $2340.18 (checking balance $512.44).",
+  "outputs": {
+    "member_id": "10001",
+    "name": "Maria Garcia",
+    "savings_balance": "$2340.18",
+    "checking_balance": "$512.44"
+  },
+  "recorded_at": "2026-09-22T20:55:38.310923+00:00",
+  "steps": [
+    {
+      "index": 0,
+      "tool_name": "navigate",
+      "tool_input": {
+        "url": "http://127.0.0.1:5055/login"
+      },
+      "action": {
+        "type": "navigate",
+        "url": "http://127.0.0.1:5055/login",
+        "method": null,
+        "description": null,
+        "target": null,
+        "point": null,
+        "value": null
+      },
+      "result": {
+        "success": true,
+        "blocked": false,
+        "policy_reason": null,
+        "error": null,
+        "resolved_strategy": null,
+        "resolved_value": null,
+        "observation": {
+          "url": "http://127.0.0.1:5055/login",
+          "frames": {},
+          "elements": [
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Meridian Credit Union - Core Teller System"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "User ID:"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Password:"
+            },
+            {
+              "tag": "input",
+              "role": "button",
+              "name": null,
+              "text": "Sign On"
+            }
+          ],
+          "dialog_message": null,
+          "screenshot_path": "evidence\\runs\\discovery-member-lookup\\step_001.png"
+        }
+      }
+    },
+    {
+      "index": 1,
+      "tool_name": "read_page",
+      "tool_input": {
+        "filter": "interactive"
+      },
+      "action": null,
+      "result": null
+    },
+    {
+      "index": 2,
+      "tool_name": "form_input",
+      "tool_input": {
+        "target": {
+          "type": "ref",
+          "ref": "el_1"
+        },
+        "value": "teller1"
+      },
+      "action": {
+        "type": "fill",
+        "url": null,
+        "method": null,
+        "description": null,
+        "target": {
+          "frame": null,
+          "candidates": [
+            {
+              "strategy": "table_position",
+              "value": "row=1,col=1",
+              "role": null
+            },
+            {
+              "strategy": "css",
+              "value": "table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(3) > td:nth-child(2) > input:nth-child(1)",
+              "role": null
+            }
+          ]
+        },
+        "point": null,
+        "value": "teller1"
+      },
+      "result": {
+        "success": true,
+        "blocked": false,
+        "policy_reason": null,
+        "error": null,
+        "resolved_strategy": "table_position",
+        "resolved_value": "row=1,col=1",
+        "observation": {
+          "url": "http://127.0.0.1:5055/login",
+          "frames": {},
+          "elements": [
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Meridian Credit Union - Core Teller System"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "User ID:"
+            },
+            {
+              "tag": "input",
+              "role": "textbox",
+              "name": null,
+              "text": "teller1"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Password:"
+            },
+            {
+              "tag": "input",
+              "role": "button",
+              "name": null,
+              "text": "Sign On"
+            }
+          ],
+          "dialog_message": null,
+          "screenshot_path": "evidence\\runs\\discovery-member-lookup\\step_002.png"
+        }
+      }
+    },
+    {
+      "index": 3,
+      "tool_name": "form_input",
+      "tool_input": {
+        "target": {
+          "type": "ref",
+          "ref": "el_2"
+        },
+        "value": "***REDACTED***"
+      },
+      "action": {
+        "type": "fill",
+        "url": null,
+        "method": null,
+        "description": null,
+        "target": {
+          "frame": null,
+          "candidates": [
+            {
+              "strategy": "table_position",
+              "value": "row=2,col=1",
+              "role": null
+            },
+            {
+              "strategy": "css",
+              "value": "table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(4) > td:nth-child(2) > input:nth-child(1)",
+              "role": null
+            }
+          ]
+        },
+        "point": null,
+        "value": "***REDACTED***"
+      },
+      "result": {
+        "success": true,
+        "blocked": false,
+        "policy_reason": null,
+        "error": null,
+        "resolved_strategy": "table_position",
+        "resolved_value": "row=2,col=1",
+        "observation": {
+          "url": "http://127.0.0.1:5055/login",
+          "frames": {},
+          "elements": [
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Meridian Credit Union - Core Teller System"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "User ID:"
+            },
+            {
+              "tag": "input",
+              "role": "textbox",
+              "name": null,
+              "text": "teller1"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Password:"
+            },
+            {
+              "tag": "input",
+              "role": "button",
+              "name": null,
+              "text": "Sign On"
+            }
+          ],
+          "dialog_message": null,
+          "screenshot_path": "evidence\\runs\\discovery-member-lookup\\step_003.png"
+        }
+      }
+    },
+    {
+      "index": 4,
+      "tool_name": "left_click",
+      "tool_input": {
+        "target": {
+          "type": "ref",
+          "ref": "el_3"
+        }
+      },
+      "action": {
+        "type": "click",
+        "url": null,
+        "method": null,
+        "description": null,
+        "target": {
+          "frame": null,
+          "candidates": [
+            {
+              "strategy": "role",
+              "value": "Sign On",
+              "role": "button"
+            },
+            {
+              "strategy": "text",
+              "value": "Sign On",
+              "role": null
+            },
+            {
+              "strategy": "table_position",
+              "value": "row=3,col=0",
+              "role": null
+            },
+            {
+              "strategy": "css",
+              "value": "table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(5) > td:nth-child(1) > input:nth-child(1)",
+              "role": null
+            }
+          ]
+        },
+        "point": null,
+        "value": null
+      },
+      "result": {
+        "success": true,
+        "blocked": false,
+        "policy_reason": null,
+        "error": null,
+        "resolved_strategy": "role",
+        "resolved_value": "Sign On",
+        "observation": {
+          "url": "http://127.0.0.1:5055/app",
+          "frames": {
+            "banner": "http://127.0.0.1:5055/app/banner",
+            "nav": "http://127.0.0.1:5055/app/nav",
+            "main": "http://127.0.0.1:5055/app/main"
+          },
+          "elements": [
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Meridian Credit Union - Core Teller System"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Signed on as teller1 \u00a0 Sign Off"
+            },
+            {
+              "tag": "a",
+              "role": "link",
+              "name": null,
+              "text": "Sign Off"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Member Lookup"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Member ID or Last Name:"
+            },
+            {
+              "tag": "input",
+              "role": "button",
+              "name": null,
+              "text": "Search"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Home"
+            },
+            {
+              "tag": "a",
+              "role": "link",
+              "name": null,
+              "text": "Home"
+            }
+          ],
+          "dialog_message": null,
+          "screenshot_path": "evidence\\runs\\discovery-member-lookup\\step_004.png"
+        }
+      }
+    },
+    {
+      "index": 5,
+      "tool_name": "read_page",
+      "tool_input": {},
+      "action": null,
+      "result": null
+    },
+    {
+      "index": 6,
+      "tool_name": "read_page",
+      "tool_input": {
+        "ref": "frame_nav",
+        "filter": "interactive"
+      },
+      "action": null,
+      "result": null
+    },
+    {
+      "index": 7,
+      "tool_name": "form_input",
+      "tool_input": {
+        "target": {
+          "type": "ref",
+          "ref": "el_4"
+        },
+        "value": "10001"
+      },
+      "action": {
+        "type": "fill",
+        "url": null,
+        "method": null,
+        "description": null,
+        "target": {
+          "frame": "nav",
+          "candidates": [
+            {
+              "strategy": "table_position",
+              "value": "row=2,col=0",
+              "role": null
+            },
+            {
+              "strategy": "css",
+              "value": "table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(4) > td:nth-child(1) > input:nth-child(1)",
+              "role": null
+            }
+          ]
+        },
+        "point": null,
+        "value": "10001"
+      },
+      "result": {
+        "success": true,
+        "blocked": false,
+        "policy_reason": null,
+        "error": null,
+        "resolved_strategy": "table_position",
+        "resolved_value": "row=2,col=0",
+        "observation": {
+          "url": "http://127.0.0.1:5055/app",
+          "frames": {
+            "banner": "http://127.0.0.1:5055/app/banner",
+            "nav": "http://127.0.0.1:5055/app/nav",
+            "main": "http://127.0.0.1:5055/app/main"
+          },
+          "elements": [
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Meridian Credit Union - Core Teller System"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Signed on as teller1 \u00a0 Sign Off"
+            },
+            {
+              "tag": "a",
+              "role": "link",
+              "name": null,
+              "text": "Sign Off"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Member Lookup"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Member ID or Last Name:"
+            },
+            {
+              "tag": "input",
+              "role": "textbox",
+              "name": null,
+              "text": "10001"
+            },
+            {
+              "tag": "input",
+              "role": "button",
+              "name": null,
+              "text": "Search"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Home"
+            },
+            {
+              "tag": "a",
+              "role": "link",
+              "name": null,
+              "text": "Home"
+            }
+          ],
+          "dialog_message": null,
+          "screenshot_path": "evidence\\runs\\discovery-member-lookup\\step_005.png"
+        }
+      }
+    },
+    {
+      "index": 8,
+      "tool_name": "left_click",
+      "tool_input": {
+        "target": {
+          "type": "ref",
+          "ref": "el_5"
+        }
+      },
+      "action": {
+        "type": "click",
+        "url": null,
+        "method": null,
+        "description": null,
+        "target": {
+          "frame": "nav",
+          "candidates": [
+            {
+              "strategy": "role",
+              "value": "Search",
+              "role": "button"
+            },
+            {
+              "strategy": "text",
+              "value": "Search",
+              "role": null
+            },
+            {
+              "strategy": "table_position",
+              "value": "row=3,col=0",
+              "role": null
+            },
+            {
+              "strategy": "css",
+              "value": "table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(5) > td:nth-child(1) > input:nth-child(1)",
+              "role": null
+            }
+          ]
+        },
+        "point": null,
+        "value": null
+      },
+      "result": {
+        "success": true,
+        "blocked": false,
+        "policy_reason": null,
+        "error": null,
+        "resolved_strategy": "role",
+        "resolved_value": "Search",
+        "observation": {
+          "url": "http://127.0.0.1:5055/app",
+          "frames": {
+            "banner": "http://127.0.0.1:5055/app/banner",
+            "nav": "http://127.0.0.1:5055/app/nav",
+            "main": "http://127.0.0.1:5055/app/search?q=10001"
+          },
+          "elements": [
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Meridian Credit Union - Core Teller System"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Signed on as teller1 \u00a0 Sign Off"
+            },
+            {
+              "tag": "a",
+              "role": "link",
+              "name": null,
+              "text": "Sign Off"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Member Lookup"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Member ID or Last Name:"
+            },
+            {
+              "tag": "input",
+              "role": "textbox",
+              "name": null,
+              "text": "10001"
+            },
+            {
+              "tag": "input",
+              "role": "button",
+              "name": null,
+              "text": "Search"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Home"
+            },
+            {
+              "tag": "a",
+              "role": "link",
+              "name": null,
+              "text": "Home"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Member ID"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Last Name"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "First Name"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Status"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "10001"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Garcia"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Maria"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "active"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "View"
+            },
+            {
+              "tag": "a",
+              "role": "link",
+              "name": null,
+              "text": "View"
+            }
+          ],
+          "dialog_message": null,
+          "screenshot_path": "evidence\\runs\\discovery-member-lookup\\step_006.png"
+        }
+      }
+    },
+    {
+      "index": 9,
+      "tool_name": "read_page",
+      "tool_input": {},
+      "action": null,
+      "result": null
+    },
+    {
+      "index": 10,
+      "tool_name": "read_page",
+      "tool_input": {
+        "ref": "frame_main",
+        "filter": "interactive"
+      },
+      "action": null,
+      "result": null
+    },
+    {
+      "index": 11,
+      "tool_name": "left_click",
+      "tool_input": {
+        "target": {
+          "type": "ref",
+          "ref": "el_7"
+        }
+      },
+      "action": {
+        "type": "click",
+        "url": null,
+        "method": null,
+        "description": null,
+        "target": {
+          "frame": "main",
+          "candidates": [
+            {
+              "strategy": "role",
+              "value": "View",
+              "role": "link"
+            },
+            {
+              "strategy": "text",
+              "value": "View",
+              "role": null
+            },
+            {
+              "strategy": "table_position",
+              "value": "row=1,col=4",
+              "role": null
+            },
+            {
+              "strategy": "css",
+              "value": "table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(2) > td:nth-child(5) > a:nth-child(1)",
+              "role": null
+            }
+          ]
+        },
+        "point": null,
+        "value": null
+      },
+      "result": {
+        "success": true,
+        "blocked": false,
+        "policy_reason": null,
+        "error": null,
+        "resolved_strategy": "role",
+        "resolved_value": "View",
+        "observation": {
+          "url": "http://127.0.0.1:5055/app",
+          "frames": {
+            "banner": "http://127.0.0.1:5055/app/banner",
+            "nav": "http://127.0.0.1:5055/app/nav",
+            "main": "http://127.0.0.1:5055/app/member/10001"
+          },
+          "elements": [
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Meridian Credit Union - Core Teller System"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Signed on as teller1 \u00a0 Sign Off"
+            },
+            {
+              "tag": "a",
+              "role": "link",
+              "name": null,
+              "text": "Sign Off"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Member Lookup"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Member ID or Last Name:"
+            },
+            {
+              "tag": "input",
+              "role": "textbox",
+              "name": null,
+              "text": "10001"
+            },
+            {
+              "tag": "input",
+              "role": "button",
+              "name": null,
+              "text": "Search"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Home"
+            },
+            {
+              "tag": "a",
+              "role": "link",
+              "name": null,
+              "text": "Home"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Member ID"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "10001"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Name"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Maria Garcia"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Status"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "active"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Savings Balance"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "$2340.18"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "Checking Balance"
+            },
+            {
+              "tag": "td",
+              "role": "cell",
+              "name": null,
+              "text": "$512.44"
+            },
+            {
+              "tag": "a",
+              "role": "link",
+              "name": null,
+              "text": "Open New Sub-Account"
+            }
+          ],
+          "dialog_message": null,
+          "screenshot_path": "evidence\\runs\\discovery-member-lookup\\step_007.png"
+        }
+      }
+    },
+    {
+      "index": 12,
+      "tool_name": "read_page",
+      "tool_input": {},
+      "action": null,
+      "result": null
+    },
+    {
+      "index": 13,
+      "tool_name": "read_page",
+      "tool_input": {
+        "ref": "frame_main"
+      },
+      "action": null,
+      "result": null
+    },
+    {
+      "index": 14,
+      "tool_name": "screenshot",
+      "tool_input": {},
+      "action": null,
+      "result": null
+    }
+  ]
+}

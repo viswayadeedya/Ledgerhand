@@ -21,6 +21,32 @@ def _login(surface, fake_app_server) -> None:
     assert r.success, r.error
 
 
+def test_password_value_never_appears_in_observations(surface, fake_app_server):
+    """Regression test: a real discovery run leaked the literal password
+    into evidence via ActionResult.observation.elements[].text, populated by
+    a DOM scan that read input[type=password]'s .value directly -- browsers
+    only mask the password visually, the DOM value is always plaintext. The
+    action's own recorded input can be redacted all day; if the *observation*
+    taken right after re-scans the live DOM, it has to mask password values
+    at the source, not rely on anyone downstream remembering to redact.
+    """
+    r = surface.act(Action(type=ActionType.NAVIGATE, url=f"{fake_app_server}/login"))
+    assert r.success
+
+    fill_result = surface.act(
+        Action(type=ActionType.FILL, target=_css_target('input[name="password"]'), value="teller123")
+    )
+    assert fill_result.success
+    assert fill_result.observation is not None
+    for element in fill_result.observation.elements:
+        assert "teller123" not in (element.text or "")
+        assert "teller123" not in (element.name or "")
+
+    obs = surface.observe()
+    for element in obs.elements:
+        assert "teller123" not in (element.text or "")
+
+
 def test_login_search_and_view_member(surface, fake_app_server):
     _login(surface, fake_app_server)
     assert "/app" in surface.page.url

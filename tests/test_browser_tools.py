@@ -138,6 +138,55 @@ def test_password_field_is_redacted_in_recorded_steps(surface, fake_app_server):
     assert "***REDACTED***" in values
     assert "teller1" in values  # the username isn't secret and stays legible
 
+    # tool_input isn't the only thing that gets serialized into the run log --
+    # the internal Action object (real value, needed to actually perform the
+    # fill) is stored on RecordedStep.action too, and must be redacted there
+    # independently: this leaked in a real discovery run even after
+    # tool_input redaction was already in place.
+    action_values = [s.action.value for s in form_input_steps if s.action is not None]
+    assert "teller123" not in action_values
+    assert "***REDACTED***" in action_values
+
+
+def test_read_page_never_surfaces_password_value(surface, fake_app_server):
+    """Companion to the ActionResult.observation leak fixed in
+    test_surface.py: read_page/find scan the DOM independently of observe(),
+    via a separate JS snippet, so they needed the same input[type=password]
+    masking at the source.
+    """
+    executor = BrowserToolExecutor(surface)
+    executor.dispatch("navigate", {"url": f"{fake_app_server}/login"})
+    top, _ = executor.dispatch("read_page", {})
+    textbox_refs = [line.split("[")[-1].rstrip("]") for line in top.splitlines() if line.startswith("textbox")]
+    executor.dispatch("form_input", {"target": {"type": "ref", "ref": textbox_refs[1]}, "value": "teller123"})
+
+    content, _ = executor.dispatch("read_page", {})
+    assert "teller123" not in content
+
+    content, _ = executor.dispatch("find", {"query": "password field"})
+    assert "teller123" not in content
+
+
+def test_password_redacted_even_when_reached_via_tab_not_click(surface, fake_app_server):
+    """Regression test: a real discovery run leaked a password into the run
+    log because the model clicked the username field, typed, then pressed
+    Tab (not a click) to reach the password field before typing again.
+    Redaction must key off actual DOM focus, not click history.
+    """
+    executor = BrowserToolExecutor(surface)
+    executor.dispatch("navigate", {"url": f"{fake_app_server}/login"})
+    top, _ = executor.dispatch("read_page", {})
+    username_ref = [l for l in top.splitlines() if l.startswith("textbox")][0].split("[")[-1].rstrip("]")
+
+    executor.dispatch("left_click", {"target": {"type": "ref", "ref": username_ref}})
+    executor.dispatch("type", {"text": "teller1"})
+    executor.dispatch("key", {"text": "Tab"})
+    executor.dispatch("type", {"text": "teller123"})
+
+    type_steps = [s for s in executor.steps if s.tool_name == "type"]
+    values = [s.tool_input.get("text") for s in type_steps]
+    assert values == ["teller1", "***REDACTED***"]
+
 
 def test_dialog_notice_returned_instead_of_hanging(surface, fake_app_server):
     _arm_fault(fake_app_server, "popup", True)
