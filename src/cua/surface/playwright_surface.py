@@ -63,9 +63,10 @@ class PlaywrightSurface(Surface):
         if not dialog_open:
             scopes = [f for f in self.page.frames if f.name] or [self.page.main_frame]
             for scope in scopes:
+                frame_name = getattr(scope, "name", "") or None
                 try:
                     for raw in scan_frame(scope):
-                        elements.append(ElementSummary(**raw))
+                        elements.append(ElementSummary(**raw, frame=frame_name))
                 except Exception:
                     continue
         return Observation(

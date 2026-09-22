@@ -77,7 +77,7 @@ class BrowserToolExecutor:
         self.surface = surface
         self.refs = RefRegistry()
         self.steps: list[RecordedStep] = []
-        self._last_target_is_secret = False
+        self._pending_redaction: str | None = None
 
     # -- dispatch ---------------------------------------------------------
 
@@ -170,11 +170,11 @@ class BrowserToolExecutor:
         if self.surface._pending_dialog is not None:
             return (self._dialog_notice(), False)
         target_spec = tool_input.get("target") or {}
-        self._last_target_is_secret = False
+        self._pending_redaction = None
         if target_spec.get("type") == "ref":
             ref = target_spec["ref"]
             entry = self.refs.get(ref)  # KeyError -> stale, caught by dispatch()
-            self._last_target_is_secret = entry.is_secret or any(m in entry.label.lower() for m in _PASSWORD_MARKERS)
+            self._pending_redaction = self._redaction_for_entry(entry)
             action = Action(type=ActionType.CLICK, target=self.refs.resolve_target(ref))
             label = ref
         elif target_spec.get("type") == "coordinate":
@@ -200,9 +200,9 @@ class BrowserToolExecutor:
         # is, which could have gotten there via a Tab press, not just our
         # last-tracked click. Check the real DOM focus, not click history.
         try:
-            self._last_target_is_secret = focused_element_is_password(self.surface.page)
+            self._pending_redaction = "{{secrets.password}}" if focused_element_is_password(self.surface.page) else None
         except Exception:
-            self._last_target_is_secret = True  # can't verify -> redact conservatively
+            self._pending_redaction = "***REDACTED***"  # can't verify -> redact conservatively
         action = Action(type=ActionType.TYPE, value=text)
         result = self.surface.act(action, human_approved=human_approved)
         self._record("type", tool_input, action, result)
@@ -236,7 +236,7 @@ class BrowserToolExecutor:
             return ("Error: form_input only accepts a ref target.", True)
         ref = target_spec["ref"]
         entry = self.refs.get(ref)
-        self._last_target_is_secret = entry.is_secret or any(m in entry.label.lower() for m in _PASSWORD_MARKERS)
+        self._pending_redaction = self._redaction_for_entry(entry)
         target = self.refs.resolve_target(ref)
         value = tool_input.get("value")
         role = entry.candidates[0].role if entry.candidates and entry.candidates[0].role else None
@@ -257,32 +257,48 @@ class BrowserToolExecutor:
 
     # -- recording ----------------------------------------------------------
 
+    def _redaction_for_entry(self, entry) -> str | None:
+        """`entry.is_secret` is the DOM-verified input[type=password] signal
+        (reliable -> we know exactly which secret this is, so we can log the
+        real template placeholder instead of a generic marker). The label
+        heuristic is a looser fallback for secret-shaped fields that aren't
+        specifically a password input; we can't know its name, so it gets
+        the generic marker instead and a human has to fix it up if they turn
+        this run into an artifact.
+        """
+        if entry.is_secret:
+            return "{{secrets.password}}"
+        if any(m in entry.label.lower() for m in _PASSWORD_MARKERS):
+            return "***REDACTED***"
+        return None
+
     def _record(self, tool_name: str, tool_input: dict, action, result) -> None:
-        is_secret = tool_name in ("type", "form_input") and self._last_target_is_secret
+        redaction = self._pending_redaction if tool_name in ("type", "form_input") else None
         self.steps.append(
             RecordedStep(
                 index=len(self.steps),
                 tool_name=tool_name,
-                tool_input=self._redact_input(tool_input, is_secret),
-                action=self._redact_action(action, is_secret),
+                tool_input=self._redact_input(tool_input, redaction),
+                action=self._redact_action(action, redaction),
                 result=result,
             )
         )
 
-    def _redact_input(self, tool_input: dict, is_secret: bool) -> dict:
+    def _redact_input(self, tool_input: dict, redaction: str | None) -> dict:
         redacted = redact_value(dict(tool_input))
-        if is_secret:
+        if redaction:
             if "text" in redacted:
-                redacted["text"] = "***REDACTED***"
+                redacted["text"] = redaction
             if "value" in redacted:
-                redacted["value"] = "***REDACTED***"
+                redacted["value"] = redaction
         return redacted
 
-    def _redact_action(self, action, is_secret: bool):
+    def _redact_action(self, action, redaction: str | None):
         # The real Action (with its real value) already did its job by the
         # time this runs -- executing it. What we store here is purely for
-        # the log, so it gets the same treatment as tool_input rather than
-        # trusting every future caller to remember to redact it downstream.
-        if action is not None and is_secret and action.value is not None:
-            return action.model_copy(update={"value": "***REDACTED***"})
+        # the log/artifact, so it gets the same treatment as tool_input
+        # rather than trusting every future caller to remember to redact it
+        # downstream.
+        if action is not None and redaction and action.value is not None:
+            return action.model_copy(update={"value": redaction})
         return action

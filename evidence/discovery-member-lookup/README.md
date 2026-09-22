@@ -4,6 +4,11 @@ A genuine LLM-driven run (`claude-sonnet-5`, via the `browser_toolset_20260801`
 client toolset) against the live fake app, using the `cua.agent` discovery
 loop from Part 4. No steps were scripted or hand-edited after the fact.
 
+This run's log was turned into the capability artifact at
+[`/artifacts/member-savings-lookup.yaml`](../../artifacts/member-savings-lookup.yaml)
+(Part 5) -- see that file and `/artifacts/README.md` for the reusable,
+LLM-free version of this same flow.
+
 **Goal:** "Look up member 10001 and read their current savings balance."
 
 **Command:**

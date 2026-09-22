@@ -86,6 +86,7 @@ class ElementSummary(BaseModel):
     role: str | None = None
     name: str | None = None
     text: str | None = None
+    frame: str | None = None  # which named frame this was scanned from; None = top-level page
 
 
 class Observation(BaseModel):

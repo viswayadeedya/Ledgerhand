@@ -135,7 +135,10 @@ def test_password_field_is_redacted_in_recorded_steps(surface, fake_app_server):
     assert len(form_input_steps) == 2
     values = [s.tool_input.get("value") for s in form_input_steps]
     assert "teller123" not in values
-    assert "***REDACTED***" in values
+    # A DOM-verified password field is redacted to the actual template
+    # placeholder (not a generic marker) so the artifact recorder (Part 5)
+    # can use the value as-is without a separate translation step.
+    assert "{{secrets.password}}" in values
     assert "teller1" in values  # the username isn't secret and stays legible
 
     # tool_input isn't the only thing that gets serialized into the run log --
@@ -145,7 +148,7 @@ def test_password_field_is_redacted_in_recorded_steps(surface, fake_app_server):
     # tool_input redaction was already in place.
     action_values = [s.action.value for s in form_input_steps if s.action is not None]
     assert "teller123" not in action_values
-    assert "***REDACTED***" in action_values
+    assert "{{secrets.password}}" in action_values
 
 
 def test_read_page_never_surfaces_password_value(surface, fake_app_server):
@@ -185,7 +188,7 @@ def test_password_redacted_even_when_reached_via_tab_not_click(surface, fake_app
 
     type_steps = [s for s in executor.steps if s.tool_name == "type"]
     values = [s.tool_input.get("text") for s in type_steps]
-    assert values == ["teller1", "***REDACTED***"]
+    assert values == ["teller1", "{{secrets.password}}"]
 
 
 def test_dialog_notice_returned_instead_of_hanging(surface, fake_app_server):

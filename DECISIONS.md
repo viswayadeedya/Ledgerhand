@@ -328,7 +328,100 @@ Ordered chronologically within each part. See /REPORT.md for the synthesized wri
 
 ## Part 5 — Recorder → artifact
 
-_(not yet built)_
+- **Steps/checkpoint/outputs reuse `cua.core.models.Action`/`Target`/
+  `LocatorCandidate` directly** rather than a parallel set of artifact-only
+  types. The recorder's whole job is to take the same "how do I find this
+  element" contract discovery and guardrails already share and strip it down
+  to just what's needed to act -- no tool names, no raw model input, no
+  `ActionResult`/`Observation` noise. Reusing the type makes that
+  "decoupled from the raw transcript" requirement structural rather than
+  a promise: `CapabilityArtifact.steps: list[Action]` cannot accidentally
+  carry transcript baggage, because `Action` never had any.
+- **The recorder is a pure function over `DiscoveryResult`, not a step in
+  the discovery loop itself.** `build_artifact()` never touches the browser,
+  the model, or the guardrail policy -- it takes a `RecordedStep` list (from
+  a fresh run or, just as well, a `run_log.json` read back off disk) plus a
+  human's declarations (which literal values are inputs vs secrets, what
+  text proves the checkpoint) and produces the artifact. This keeps "what
+  happened" (Part 4) and "what we're willing to call reusable" (this part)
+  as separate concerns a human reviews independently -- exactly the
+  "reviewable" property the brief asks for is easier to deliver when
+  recording isn't entangled with discovery's control flow.
+- **Only actions with a real locator survive into the artifact.**
+  `ActionType.TYPE`/`KEY` (discovery-only, act on "whatever has focus," no
+  target) are filtered out; only NAVIGATE/CLICK/SUBMIT/FILL/SELECT/WAIT/
+  DISMISS_DIALOG make it through, since those are exactly the ones that
+  carry a `Target` (or, for NAVIGATE, a URL) replay can act on
+  deterministically. If a discovery run leaned on TYPE/KEY to reach the
+  goal, that run's artifact would have a real gap -- which is precisely why
+  Part 4's system-prompt nudge toward `form_input` over click-then-`type`
+  wasn't just about speed; it's what makes a run *recordable* at all, not
+  just successful.
+- **Parameterization is value-matching against caller-declared dicts, not
+  inference.** The recorder doesn't guess which literal values are
+  "parameters" -- the caller passes `inputs={"member_id": "10001"}` and
+  `secret_values={"username": "teller1"}` (values known from the same run),
+  and any step value that exactly matches gets replaced with
+  `{{inputs.member_id}}` / `{{secrets.username}}`. This mirrors how a human
+  would actually build a capability: you know what varies because you're
+  the one who ran it with that value in mind, not because the system
+  pattern-matched something that looked like an ID.
+- **The password placeholder change from Part 4 pays off directly here.**
+  Because a verified `input[type=password]` value is redacted to the literal
+  `"{{secrets.password}}"` (not a generic `"***REDACTED***"` marker), the
+  recorder's parameterization step needs no special case for it at all -- it
+  already *is* the correct template string by the time the recorder sees it.
+  A generic marker would have needed a second translation step and an
+  assumption about which secret name it corresponded to.
+- **Outputs get their own locator, extracted from the final `Observation`,
+  not just the value discovery happened to report.** `report_success`'s
+  `outputs` dict is freeform text the model wrote in its own message -- on
+  its own, replaying it would mean literally repeating "$2340.18" forever
+  regardless of what the real page says next time, which isn't a capability
+  at all. Instead, the recorder searches the last recorded `Observation`'s
+  `elements` for one whose text matches the declared output value
+  (normalized: case, `$`, commas stripped) and builds a `TEXT`-strategy
+  `Target` from *that live element*, so replay re-reads the real page every
+  time. This needed a small but real fix upstream: `ElementSummary` didn't
+  track which frame an element came from (it was a flat cross-frame list),
+  so nothing this function found could be reliably re-located later --
+  added `ElementSummary.frame`, set in `PlaywrightSurface.observe()`.
+- **A known simplification, cut deliberately for scope:** output/checkpoint
+  locators built this way only ever get a single `TEXT` candidate, not the
+  full ranked role/label/table-position/CSS fallback chain that discovery's
+  own `read_page`/`find` produce for elements it actually interacts with.
+  `Observation.elements` (from the lightweight `scan_frame`/`_SCAN_JS`)
+  doesn't carry that richer descriptor -- only the fuller
+  `scan_frame_described`/`_SCAN_DESCRIBE_JS` used by `read_page`/`find`
+  does, and by the time `report_success` is called there's no guarantee the
+  model still has fresh refs open on exactly the right elements. A more
+  complete version would re-run the fuller descriptor scan against the live
+  page at recording time (if the browser session is still open) to get the
+  same ranked-candidate robustness as interacted-with elements. Documented
+  here rather than silently shipped as if it were the same quality bar.
+- **The checkpoint is asserted by a human, not inferred.** `checkpoint_text`
+  is a required parameter with no default -- the recorder refuses to build
+  an artifact without it (`ArtifactBuildError`). This matches the glossary's
+  own framing of a checkpoint ("a condition you assert to confirm you
+  actually reached the state you expected") -- asserting is something a
+  person does when reviewing a capability before trusting it for replay, not
+  something safe to auto-detect from whatever text happened to be on the
+  final screenshot.
+- **Format: YAML files under a top-level `/artifacts/` directory**, one file
+  per capability, mirroring `guardrails/policy.yaml`'s precedent that a
+  human-reviewed contract reads better as commented-shape YAML than a JSON
+  blob or a Python literal. `/evidence/` stays the proof-of-work (logs,
+  screenshots) and links to the artifact rather than duplicating it, so
+  there's exactly one copy to keep in sync as artifacts change.
+- **First real artifact built and committed**: `artifacts/member-savings-lookup.yaml`,
+  built from `evidence/discovery-member-lookup/run_log.json` via
+  `python -m cua.artifacts` (see `artifacts/README.md` for the exact
+  command). 7 replayable steps, 4 outputs each with their own locator, a
+  resolved checkpoint, no secret or input literal anywhere in the file
+  (verified by test and by hand). 12 new tests in `tests/test_recorder.py`
+  -- notably built directly against this *real* run log, not a synthetic
+  fixture, so the tests double as a second confirmation the artifact is
+  sound. 41/41 tests pass repo-wide.
 
 ## Part 6 — Replay + error taxonomy
 
