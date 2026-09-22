@@ -7,7 +7,7 @@ import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
-from cua.guardrails.models import Action, ActionType, PolicyDecision, RiskLevel
+from cua.core.models import Action, ActionType, PolicyDecision, RiskLevel
 
 load_dotenv()
 

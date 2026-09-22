@@ -159,7 +159,68 @@ Ordered chronologically within each part. See /REPORT.md for the synthesized wri
 
 ## Part 3 — Surface interface
 
-_(not yet built)_
+- **Shared contracts moved to a new `cua.core` package.** `Action` (and
+  friends) started in `guardrails.models` (Part 2), but Surface needs it
+  too, and neither package should depend on the other just to share a
+  vocabulary. `cua/core/models.py` now owns `Action`, `Target`,
+  `LocatorCandidate`, `Point`, `Observation`, `ActionResult`, etc.;
+  `guardrails/models.py` re-exports from it so the Part 2 tests didn't need
+  to change. Chose to do this refactor now, while the blast radius is still
+  two files, rather than let guardrails keep growing into a de facto
+  "everything" module.
+- **Two ways to target an element, one underlying resolver.** An `Action`
+  can carry either a `target` (ranked `LocatorCandidate`s: role → label →
+  text → table position → CSS, strict "exactly one match or fail") or a
+  `point` (pixel coordinates). This is deliberate: discovery (Part 4) will
+  drive the page the way Anthropic's computer-use tool works, via
+  screenshots and coordinates, but coordinates never get recorded into an
+  artifact. `surface/perceive.py` hit-tests a point back to a DOM element
+  and derives the same ranked candidates a semantic target would carry, so
+  by the time an action is done, the system has a robust locator either way
+  -- coordinates are how the model acts, not what gets remembered.
+- **Resolve → predict destination → check policy → act, in that order,
+  always.** For CLICK/SUBMIT, the surface resolves the target element
+  *first*, reads its `href` or enclosing `<form>`'s `action`/`method`
+  *without clicking*, builds the real destination URL, and only then calls
+  `PolicyEngine.evaluate()`. A blocked click never reaches the browser --
+  proven by `test_risky_commit_is_blocked_then_allowed_with_human_approval`,
+  which asserts the app never left the confirmation screen until
+  `human_approved=True` was passed. This is what makes Part 2's guardrails
+  a real enforcement mechanism instead of a policy nobody consults.
+- **TABLE_POSITION resolves through to the interactive control inside the
+  cell, not the cell itself.** First cut returned the `<td>`/`<th>` locator
+  directly, which is rarely what you want to click or fill. If a cell has
+  exactly one interactive descendant (`input`/`select`/`textarea`/`button`/
+  `a`), that's what gets targeted instead -- caught by
+  `test_table_position_strategy_resolves_cell_input` failing on the first
+  run.
+- **Two real bugs found only by actually running Playwright against a page
+  with a blocking `confirm()` dialog** (both would have shipped silently
+  without the integration test in `test_surface.py`):
+  1. `page.goto()` defaults to waiting for the `load` event; a page whose
+     `window.onload` handler opens a `confirm()` never finishes that event,
+     so `goto()` hung forever. Fixed by navigating with
+     `wait_until="domcontentloaded"` instead.
+  2. Even after that fix, `observe()` still hung: a pending native dialog
+     blocks the page's entire script/render pipeline, so both
+     `evaluate()` (element scanning) *and* `screenshot()` (it waits on font
+     loading, which needs the pipeline) stall until the dialog is resolved.
+     Fixed by skipping both while `self._pending_dialog` is set -- `observe()`
+     still reports the dialog's message and current URL, just not a fresh
+     scan/screenshot until it's dismissed. Also added a short (150ms)
+     settle pause after navigate/click so the "dialog opened" event has
+     time to reach our handler before we decide whether it's safe to
+     evaluate -- there's a small residual race here in theory (a
+     pathologically slow event-dispatch could still lose it), acceptable
+     for this project's stable-enterprise-UI target but worth flagging as a
+     known limitation rather than a guarantee.
+- **Locator resolution unit-tested independent of the fake app**
+  (`tests/test_locator.py`, using `page.set_content()` on inline HTML) so
+  ranking logic is verified in isolation from server/browser-orchestration
+  flakiness; the fuller integration suite (`tests/test_surface.py`) spins up
+  a real fake-app instance on a free port per test module and drives it
+  end-to-end, including login, frame-crossing search, the guardrail-blocked
+  commit, and the popup dialog.
 
 ## Part 4 — Agent loop
 
