@@ -11,6 +11,8 @@ from urllib.parse import urlsplit
 from cua.artifacts.schema import CapabilityArtifact, Target
 from cua.core.models import Action, ActionType
 from cua.guardrails.policy import PolicyEngine
+from cua.handoff.handler import HandoffHandler
+from cua.handoff.models import EscalationRecord, EscalationRequest, HandoffAction, HandoffDecision
 from cua.replay.models import RecoveryEvent, ReplayError, ReplayOutcome, ReplayResult
 from cua.replay.render import render_action
 from cua.surface.locator import LocatorResolutionError, resolve_with_wait
@@ -29,6 +31,14 @@ class _ReplayEnd(Exception):
         self.result = result
 
 
+class _SkipToEnding(Exception):
+    """A human resolved things directly in the live session (or approved
+    continuing) -- don't blindly keep running the rest of the scripted
+    steps against what might now be a different page state; go straight to
+    checking whether we've reached the checkpoint or a business outcome.
+    """
+
+
 @dataclass
 class _RunContext:
     artifact: CapabilityArtifact
@@ -36,8 +46,11 @@ class _RunContext:
     inputs: dict[str, str]
     secrets: dict[str, str]
     human_approved: bool
+    handoff: HandoffHandler | None
     rendered_steps: list[Action] = field(default_factory=list)
     recovery_events: list[RecoveryEvent] = field(default_factory=list)
+    escalations: list[EscalationRecord] = field(default_factory=list)
+    escalated_outcomes: set[str] = field(default_factory=set)
 
 
 class ReplayEngine:
@@ -46,10 +59,12 @@ class ReplayEngine:
         policy: PolicyEngine | None = None,
         headless: bool = True,
         evidence_dir: str | Path = "evidence/runs",
+        handoff: HandoffHandler | None = None,
     ):
         self.policy = policy or PolicyEngine()
         self.headless = headless
         self.evidence_dir = evidence_dir
+        self.handoff = handoff
 
     def run(
         self,
@@ -68,7 +83,14 @@ class ReplayEngine:
             headless=self.headless,
             evidence_dir=self.evidence_dir,
         )
-        ctx = _RunContext(artifact=artifact, surface=surface, inputs=inputs, secrets=secrets, human_approved=human_approved)
+        ctx = _RunContext(
+            artifact=artifact,
+            surface=surface,
+            inputs=inputs,
+            secrets=secrets,
+            human_approved=human_approved,
+            handoff=self.handoff,
+        )
         ctx.rendered_steps = [render_action(a, inputs, secrets) for a in artifact.steps]
 
         steps_executed = 0
@@ -77,6 +99,8 @@ class ReplayEngine:
                 self._execute_step(ctx, idx, action)
                 steps_executed = idx + 1
             result = self._resolve_ending(ctx)
+        except _SkipToEnding:
+            result = self._resolve_ending(ctx)
         except _ReplayEnd as end:
             result = end.result
         finally:
@@ -84,17 +108,101 @@ class ReplayEngine:
 
         result.steps_executed = steps_executed
         result.recovery_events = ctx.recovery_events
+        result.escalations = ctx.escalations
         return result
+
+    # -- human handoff -----------------------------------------------------
+
+    def _escalate(
+        self, ctx: _RunContext, step_index: int | None, reason: str, business_outcome: str | None = None
+    ) -> HandoffDecision:
+        """Routes an intervention request to ctx.handoff and hands it the
+        SAME live surface -- control genuinely leaves this loop until
+        escalate() returns; nothing here touches the surface again first.
+        """
+        observation = _safe_observe(ctx.surface)
+        request = EscalationRequest(
+            capability_id=ctx.artifact.id,
+            capability_title=ctx.artifact.title,
+            step_index=step_index,
+            reason=reason,
+            business_outcome=business_outcome,
+            current_url=observation.url if observation else ctx.surface.page.url,
+            screenshot_path=observation.screenshot_path if observation else None,
+        )
+        decision = ctx.handoff.escalate(request, ctx.surface)
+        ctx.escalations.append(
+            EscalationRecord(
+                step_index=step_index,
+                reason=reason,
+                decision=decision.action,
+                operator_note=decision.operator_note,
+                resumed_via=type(ctx.handoff).__name__,
+                requested_at=request.requested_at,
+            )
+        )
+        return decision
 
     # -- step execution, with bounded recovery ---------------------------
 
     def _execute_step(self, ctx: _RunContext, idx: int, action: Action) -> None:
+        # Checked before attempting the step, not just after it fails: a
+        # locator's own robustness fallbacks (e.g. TABLE_POSITION, which
+        # picks a row by position regardless of *which* row is ambiguous)
+        # can make a step resolve successfully even when the page is
+        # already showing a known business outcome -- "click View" happily
+        # clicks row 1 even when the search legitimately came back
+        # ambiguous. timeout_ms=0: a single, instant check, not a wait --
+        # this runs before every step, so it must stay cheap on the normal
+        # (nothing matches) path.
+        outcome_result = self._check_business_outcomes(ctx, timeout_ms=0)
+        if outcome_result is not None:
+            raise _ReplayEnd(outcome_result)
+
         result = None
         for attempt in range(MAX_RECOVERY_ATTEMPTS + 1):
             result = ctx.surface.act(action, human_approved=ctx.human_approved)
 
             if result.blocked:
-                raise _ReplayEnd(
+                if ctx.handoff is None:
+                    raise _ReplayEnd(
+                        ReplayResult(
+                            outcome=ReplayOutcome.NEEDS_HUMAN,
+                            capability_id=ctx.artifact.id,
+                            error=ReplayError(
+                                step_index=idx,
+                                expected="action allowed by policy",
+                                observed=result.policy_reason or "blocked",
+                                message=(
+                                    f"Step {idx} ({_describe_action(action)}) is blocked by policy and requires "
+                                    f"human approval: {result.policy_reason}"
+                                ),
+                            ),
+                        )
+                    )
+                decision = self._escalate(
+                    ctx, idx, reason=f"blocked by policy ({_describe_action(action)}): {result.policy_reason}"
+                )
+                if decision.action == HandoffAction.APPROVE_AND_RETRY:
+                    retry = ctx.surface.act(action, human_approved=True)
+                    if retry.success:
+                        self._dismiss_pending_dialog(ctx, idx)
+                        return
+                    raise _ReplayEnd(
+                        ReplayResult(
+                            outcome=ReplayOutcome.HARD_FAILURE,
+                            capability_id=ctx.artifact.id,
+                            error=ReplayError(
+                                step_index=idx,
+                                expected=_describe_action(action),
+                                observed=retry.error or "failed even after human approval",
+                                message=f"Step {idx} failed even after human approval: {retry.error}",
+                            ),
+                        )
+                    )
+                if decision.action == HandoffAction.MANUAL_RESOLVED:
+                    raise _SkipToEnding()
+                raise _ReplayEnd(  # ABANDON
                     ReplayResult(
                         outcome=ReplayOutcome.NEEDS_HUMAN,
                         capability_id=ctx.artifact.id,
@@ -102,10 +210,7 @@ class ReplayEngine:
                             step_index=idx,
                             expected="action allowed by policy",
                             observed=result.policy_reason or "blocked",
-                            message=(
-                                f"Step {idx} ({_describe_action(action)}) is blocked by policy and requires "
-                                f"human approval: {result.policy_reason}"
-                            ),
+                            message=f"Step {idx} blocked by policy; operator abandoned: {decision.operator_note}",
                         ),
                     )
                 )
@@ -145,7 +250,7 @@ class ReplayEngine:
         # onto a known business outcome mid-way -- e.g. there's no "View"
         # result to click because the search came back empty. Check before
         # giving up: a business outcome here is a real answer, not a bug.
-        outcome_result = _check_business_outcomes(ctx)
+        outcome_result = self._check_business_outcomes(ctx)
         if outcome_result is not None:
             raise _ReplayEnd(outcome_result)
 
@@ -218,10 +323,11 @@ class ReplayEngine:
                         )
                     )
                 outputs[spec.name] = value
-            outcome = ReplayOutcome.RECOVERED if ctx.recovery_events else ReplayOutcome.SUCCESS
+            needed_help = ctx.recovery_events or ctx.escalations
+            outcome = ReplayOutcome.RECOVERED if needed_help else ReplayOutcome.SUCCESS
             return ReplayResult(outcome=outcome, capability_id=ctx.artifact.id, outputs=outputs)
 
-        outcome_result = _check_business_outcomes(ctx)
+        outcome_result = self._check_business_outcomes(ctx)
         if outcome_result is not None:
             return outcome_result
 
@@ -237,6 +343,45 @@ class ReplayEngine:
                 ),
             )
         )
+
+    def _check_business_outcomes(self, ctx: _RunContext, timeout_ms: int = 3000) -> ReplayResult | None:
+        for spec in ctx.artifact.business_outcomes:
+            if not _target_resolves(ctx.surface, spec.detect, timeout_ms=timeout_ms):
+                continue
+
+            if not spec.requires_human:
+                return ReplayResult(
+                    outcome=ReplayOutcome.BUSINESS_OUTCOME,
+                    capability_id=ctx.artifact.id,
+                    business_outcome=spec.name,
+                    business_outcome_description=spec.description,
+                )
+
+            # An ambiguous/risky outcome: don't just report it, offer a
+            # human the chance to resolve it in the live session -- but only
+            # once per outcome per run, so a human declining (or the page
+            # genuinely not changing) can't loop forever.
+            if ctx.handoff is None or spec.name in ctx.escalated_outcomes:
+                return ReplayResult(
+                    outcome=ReplayOutcome.NEEDS_HUMAN,
+                    capability_id=ctx.artifact.id,
+                    business_outcome=spec.name,
+                    business_outcome_description=spec.description,
+                )
+
+            ctx.escalated_outcomes.add(spec.name)
+            decision = self._escalate(
+                ctx, step_index=None, reason=f"outcome '{spec.name}' requires human review: {spec.description}", business_outcome=spec.name
+            )
+            if decision.action == HandoffAction.ABANDON:
+                return ReplayResult(
+                    outcome=ReplayOutcome.NEEDS_HUMAN,
+                    capability_id=ctx.artifact.id,
+                    business_outcome=spec.name,
+                    business_outcome_description=spec.description,
+                )
+            raise _SkipToEnding()  # human acted (or approved); re-evaluate the page from scratch
+        return None
 
 
 def _validate_params(artifact: CapabilityArtifact, inputs: dict[str, str], secrets: dict[str, str]) -> None:
@@ -267,17 +412,6 @@ def _looks_like_session_expired(observation, artifact: CapabilityArtifact, idx: 
     return current_path == entry_path or current_path.endswith("/login")
 
 
-def _check_business_outcomes(ctx: _RunContext) -> ReplayResult | None:
-    for spec in ctx.artifact.business_outcomes:
-        if _target_resolves(ctx.surface, spec.detect):
-            outcome = ReplayOutcome.NEEDS_HUMAN if spec.requires_human else ReplayOutcome.BUSINESS_OUTCOME
-            return ReplayResult(
-                outcome=outcome,
-                capability_id=ctx.artifact.id,
-                business_outcome=spec.name,
-                business_outcome_description=spec.description,
-            )
-    return None
 
 
 def _target_resolves(surface: PlaywrightSurface, target: Target, timeout_ms: int = 3000) -> bool:

@@ -6,6 +6,7 @@ from pathlib import Path
 import yaml
 
 from cua.artifacts.schema import CapabilityArtifact
+from cua.handoff import InteractivePauseHandoff, TerminalOperatorHandoff
 from cua.replay.engine import ReplayEngine
 
 
@@ -26,11 +27,27 @@ def main() -> None:
     parser.add_argument("--headed", action="store_true")
     parser.add_argument("--evidence-dir", default="evidence/runs")
     parser.add_argument("--out", default=None, help="Optional path to also write the ReplayResult as JSON")
+    parser.add_argument(
+        "--handoff",
+        choices=["none", "terminal", "interactive"],
+        default="none",
+        help=(
+            "How to handle a NEEDS_HUMAN condition: 'none' stops and reports it (Part 6 behavior); "
+            "'terminal' prompts you at this terminal for a decision; 'interactive' pauses with the "
+            "Playwright Inspector open on the live browser for you to take over directly (needs --headed)."
+        ),
+    )
     args = parser.parse_args()
 
     artifact = CapabilityArtifact.model_validate(yaml.safe_load(Path(args.artifact).read_text(encoding="utf-8")))
 
-    engine = ReplayEngine(headless=not args.headed, evidence_dir=args.evidence_dir)
+    handoff = None
+    if args.handoff == "terminal":
+        handoff = TerminalOperatorHandoff(evidence_dir=args.evidence_dir)
+    elif args.handoff == "interactive":
+        handoff = InteractivePauseHandoff(evidence_dir=args.evidence_dir)
+
+    engine = ReplayEngine(headless=not args.headed, evidence_dir=args.evidence_dir, handoff=handoff)
     result = engine.run(
         artifact,
         inputs=_parse_kv(args.input),
@@ -44,6 +61,10 @@ def main() -> None:
         print("Recovery events:")
         for ev in result.recovery_events:
             print(f"  - step {ev.step_index}: {ev.kind} ({ev.detail})")
+    if result.escalations:
+        print("Escalations:")
+        for esc in result.escalations:
+            print(f"  - step {esc.step_index}: {esc.decision.value} -- {esc.operator_note}")
     if result.outputs:
         print(f"Outputs: {json.dumps(result.outputs, indent=2)}")
     if result.business_outcome:

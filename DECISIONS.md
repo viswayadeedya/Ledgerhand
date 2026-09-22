@@ -551,7 +551,111 @@ Ordered chronologically within each part. See /REPORT.md for the synthesized wri
 
 ## Part 7 — Human handoff
 
-_(not yet built)_
+- **The handoff mechanism gets the exact same live `PlaywrightSurface` the
+  run was already using -- never a fresh one.** `HandoffHandler.escalate(
+  request, surface)` receives the actual object `ReplayEngine` has been
+  driving all along. Automation makes no further calls to it until
+  `escalate()` returns; that's the "who is in control" seam the brief asks
+  for made literal in code, not just documented -- control is wherever
+  `escalate()`'s implementation is, for as long as it's running.
+- **Two real handoff implementations, not one mock.**
+  `InteractivePauseHandoff` uses Playwright's own built-in mechanism for
+  this exact scenario -- `page.pause()` opens the real Playwright Inspector
+  against the live browser, lets a person click/type/navigate in it
+  directly, and returns control the instant they click Resume. We didn't
+  build a custom co-browsing UI; we reused the one the automation tool we
+  already depend on ships for precisely this purpose. It needs a headed
+  session and a person physically present, so it can't be exercised by an
+  automated test (or by me, an AI, without a person to click Resume) --
+  `MockOperatorHandoff` (a programmable callback standing in for the
+  operator, still handed the same real surface) is what proves the
+  control-transfer model in tests and in the evidence under
+  `evidence/handoff-ambiguous-duplicate/`, per the brief's own allowance to
+  mock the operator UI as long as the handoff mechanism and control-transfer
+  model are real. A third, `TerminalOperatorHandoff`, sits between the two:
+  a real person makes a real decision, at a terminal instead of a
+  browser-based console -- only the "look at the live page yourself" part is
+  mocked (a screenshot path is printed instead of an embedded view), which
+  is exactly the piece the brief's scope note says is fine to mock.
+- **Three decisions an operator can make, matched to what's actually being
+  asked of them**: `APPROVE_AND_RETRY` (go ahead, retry the exact step that
+  was blocked -- used for a policy-blocked risky action, where automation
+  still does the honors once approved), `MANUAL_RESOLVED` (the human already
+  fixed it live in the browser -- used for an ambiguous business outcome,
+  where there's no single "step" to retry, just a state only a person could
+  disambiguate), `ABANDON` (decline; stop here). Business-outcome escalation
+  only offers the latter two -- there's no specific action to retry when the
+  problem is "I don't know which of two records is right," only "did you
+  fix it" or "no."
+- **`MANUAL_RESOLVED` skips the rest of the scripted steps, going straight
+  to checkpoint/business-outcome resolution**, rather than blindly resuming
+  the recorded step sequence. Once a human has taken the wheel, the old
+  script's assumptions about page structure may no longer hold (they might
+  have ended up somewhere the recipe didn't anticipate) -- so replay just
+  asks "did we reach a recognized ending?" instead of trusting the next
+  scripted click still makes sense. Implemented via a small internal
+  `_SkipToEnding` signal, the same pattern `_ReplayEnd` already used for
+  "stop early with a result."
+- **A real, non-obvious bug the ambiguous-duplicate scenario surfaced**:
+  the recorded "click View" step's locator candidates rank
+  `TABLE_POSITION` as a fallback (Part 3's robustness ranking), and a
+  table-position locator resolves by *position*, not content -- so it
+  clicked "row 1's View link" successfully even when the search had
+  legitimately come back ambiguous, sailing right past the business outcome
+  without ever failing. Reactive detection (checking business outcomes only
+  when a step fails to resolve, Part 6's original design) is therefore
+  incomplete: some outcomes can be true on the page without any step ever
+  failing, depending on how robust that step's own locator happens to be.
+  Fixed by checking business outcomes *before* each step too, not only
+  after failure -- using `resolve_with_wait(timeout_ms=0)` (a single,
+  instant check, not a wait) so this costs nothing extra on the normal,
+  nothing-matches path where it runs on every step. This is a genuine
+  interaction between two features built for different reasons (locator
+  robustness in Part 3, business-outcome safety in Part 6) that only showed
+  up once both were exercised together against a real ambiguous state --
+  exactly the kind of thing a design doc can't predict and only running the
+  system for real surfaces.
+- **Escalation is bounded to one attempt per named outcome per run**
+  (`ctx.escalated_outcomes`), the same "never retry indefinitely" principle
+  Part 6 applied to dialog/session recovery. If a human declines, or the
+  page genuinely hasn't changed after they say they fixed it, the second
+  encounter with the same outcome name returns `NEEDS_HUMAN` directly
+  instead of asking again.
+- **A successful handoff still shows up as `RECOVERED`, not a 6th outcome
+  value.** Reusing the taxonomy from Part 6 rather than inventing
+  `ESCALATED_AND_RESOLVED`: `RECOVERED` already means "reached a good
+  outcome, but only after handling something along the way," which is
+  exactly what happened -- `result.escalations` (a new field, alongside the
+  existing `recovery_events`) is what distinguishes "needed a human" from
+  "needed an automatic dialog dismiss" for anyone inspecting the result
+  afterward, without growing the outcome enum for what's really a *detail*
+  of how SUCCESS-shaped-but-not-quite-clean was reached.
+- **Escalation context is written to disk before the operator ever acts**,
+  not after (`write_escalation_request` runs first in every handler,
+  `append_decision` only afterward) -- so the intervention request survives
+  even if the operator never responds, matching "preserve context and
+  evidence across the handoff" from the brief. It includes a screenshot,
+  gated the same way Part 3 found necessary elsewhere: skipped if a native
+  dialog is currently blocking the page (would hang otherwise), same
+  root cause as the Part 3/Part 6 dialog-hang findings.
+- **Second business outcome added for real**: `ambiguous_duplicate`
+  (`artifacts/member-savings-lookup.yaml`), captured the same deterministic-
+  exploration way as `member_not_found` (`scripts/
+  capture_ambiguous_duplicate_outcome.py`, arming the fake app's
+  `duplicate_members` fault and driving the artifact's own recorded prefix),
+  marked `requires_human=True` -- this is the "genuinely ambiguous, don't
+  guess" case Part 1's own design commentary flagged as the right kind of
+  thing to escalate rather than silently resolve.
+- **53 tests pass repo-wide**, 4 new in `tests/test_handoff.py`: no-handoff-
+  configured behaves exactly like Part 6 (regression guard), operator
+  abandons an ambiguous outcome, operator resolves one by acting on the
+  live session (the key same-session proof), and operator approves a
+  policy-blocked risky step end to end through the real handoff path (not
+  just pre-setting `human_approved=True` the way Part 6's own test did).
+  Plus two real, tracked replay runs against the live fake app and the
+  actual committed artifact in `evidence/handoff-ambiguous-duplicate/`
+  (abandoned and resolved), with escalation records, screenshots, and full
+  results.
 
 ## Part 8 — Evidence + tests
 

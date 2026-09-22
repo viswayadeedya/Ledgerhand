@@ -2,6 +2,8 @@ from enum import Enum
 
 from pydantic import BaseModel
 
+from cua.handoff.models import EscalationRecord
+
 
 class ReplayOutcome(str, Enum):
     SUCCESS = "success"  # reached checkpoint cleanly, no recovery needed
@@ -35,5 +37,6 @@ class ReplayResult(BaseModel):
     business_outcome: str | None = None
     business_outcome_description: str | None = None
     recovery_events: list[RecoveryEvent] = []
+    escalations: list[EscalationRecord] = []
     error: ReplayError | None = None
     steps_executed: int = 0

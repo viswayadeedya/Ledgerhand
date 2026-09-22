@@ -192,6 +192,16 @@ business_outcomes:
       value: No member found
       role: null
   requires_human: false
+- name: ambiguous_duplicate
+  description: More than one member record matched; automation should not guess which
+    one.
+  detect:
+    frame: main
+    candidates:
+    - strategy: text
+      value: Multiple members matched
+      role: null
+  requires_human: true
 provenance:
   discovered_at: '2026-09-22T21:41:40.365683+00:00'
   discovery_model: claude-sonnet-5

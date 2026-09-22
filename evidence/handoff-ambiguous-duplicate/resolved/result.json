@@ -1,0 +1,26 @@
+{
+  "outcome": "recovered",
+  "capability_id": "member-savings-lookup",
+  "outputs": {
+    "member_id": "10001",
+    "member_name": "Maria Garcia",
+    "savings_balance": "$2340.18",
+    "checking_balance": "$512.44"
+  },
+  "business_outcome": null,
+  "business_outcome_description": null,
+  "recovery_events": [],
+  "escalations": [
+    {
+      "step_index": null,
+      "reason": "outcome 'ambiguous_duplicate' requires human review: More than one member record matched; automation should not guess which one.",
+      "decision": "manual_resolved",
+      "operator_note": "Demo: operator reviewed both records and selected the first (non-duplicate) one.",
+      "resumed_via": "MockOperatorHandoff",
+      "requested_at": "2026-09-22T23:03:33.316835+00:00",
+      "resolved_at": "2026-09-22T23:03:33.383838+00:00"
+    }
+  ],
+  "error": null,
+  "steps_executed": 6
+}
