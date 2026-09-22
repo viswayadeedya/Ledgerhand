@@ -43,6 +43,17 @@ def main() -> None:
         help="Repeatable; overrides the value used to locate this output (defaults to the run log's own outputs)",
     )
     parser.add_argument("--output-desc", action="append", metavar="name=description", help="Repeatable")
+    parser.add_argument(
+        "--exclude-output",
+        action="append",
+        metavar="name",
+        help=(
+            "Repeatable; drops a name the run log's own outputs would otherwise include by default. "
+            "Useful when a value (e.g. an echoed input) only appears inside a form control -- text-locator "
+            "extraction only works on real text content, not an <input>'s value, so those can't be "
+            "reliably re-extracted at replay time and are better left out."
+        ),
+    )
     parser.add_argument("--checkpoint-text", required=True)
 
     args = parser.parse_args()
@@ -52,6 +63,8 @@ def main() -> None:
 
     output_values = dict(run_log.get("outputs") or {})
     output_values.update(_parse_kv(args.output))
+    for name in args.exclude_output or []:
+        output_values.pop(name, None)
 
     artifact = build_artifact(
         steps,

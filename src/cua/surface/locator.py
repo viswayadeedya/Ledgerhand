@@ -1,4 +1,5 @@
 import re
+import time
 
 from cua.core.models import LocatorCandidate, LocatorStrategy
 
@@ -61,3 +62,26 @@ def resolve(scope, candidates: list[LocatorCandidate]):
     raise LocatorResolutionError(
         "no candidate resolved to exactly one element: " + "; ".join(attempts)
     )
+
+
+def resolve_with_wait(scope, candidates: list[LocatorCandidate], timeout_ms: int = 5000, poll_ms: int = 200):
+    """Like resolve(), but retries for up to timeout_ms before giving up.
+
+    resolve()'s .count() check is instantaneous -- it reports whatever's in
+    the DOM at that exact moment, with no auto-wait. That's correct for a
+    genuinely-missing element, but wrong for a target frame that's still
+    mid-navigation: a real page load takes real time, and a single instant
+    check can race and report "not found" a moment before the content
+    actually appears. This is what turns that race into a bounded wait
+    instead of a false failure -- used wherever replay/discovery act on a
+    page that just navigated, never for the strict "does this resolve right
+    now" checks locator.py's own tests care about.
+    """
+    deadline = time.monotonic() + timeout_ms / 1000
+    while True:
+        try:
+            return resolve(scope, candidates)
+        except LocatorResolutionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(poll_ms / 1000)

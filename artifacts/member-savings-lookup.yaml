@@ -21,37 +21,37 @@ outputs:
   type: string
   description: ''
   target:
-    frame: null
+    frame: main
     candidates:
-    - strategy: text
-      value: '10001'
+    - strategy: table_position
+      value: row=0,col=1
       role: null
-- name: name
+- name: member_name
   type: string
   description: Member's full name.
   target:
-    frame: null
+    frame: main
     candidates:
-    - strategy: text
-      value: Maria Garcia
+    - strategy: table_position
+      value: row=1,col=1
       role: null
 - name: savings_balance
   type: string
   description: Current savings balance.
   target:
-    frame: null
+    frame: main
     candidates:
-    - strategy: text
-      value: $2340.18
+    - strategy: table_position
+      value: row=3,col=1
       role: null
 - name: checking_balance
   type: string
   description: Current checking balance.
   target:
-    frame: null
+    frame: main
     candidates:
-    - strategy: text
-      value: $512.44
+    - strategy: table_position
+      value: row=4,col=1
       role: null
 steps:
 - type: navigate
@@ -176,13 +176,23 @@ steps:
   point: null
   value: null
 checkpoint:
-  frame: null
+  frame: main
   candidates:
   - strategy: text
     value: Savings Balance
     role: null
 checkpoint_description: Page shows text matching "Savings Balance".
+business_outcomes:
+- name: member_not_found
+  description: No member exists with the given ID.
+  detect:
+    frame: main
+    candidates:
+    - strategy: text
+      value: No member found
+      role: null
+  requires_human: false
 provenance:
-  discovered_at: '2026-09-22T21:16:26.260717+00:00'
+  discovered_at: '2026-09-22T21:41:40.365683+00:00'
   discovery_model: claude-sonnet-5
   source_run_log: evidence/discovery-member-lookup/run_log.json

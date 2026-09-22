@@ -4,14 +4,14 @@
   "allowed_domain": "127.0.0.1:5055",
   "model": "claude-sonnet-5",
   "outcome": "success",
-  "summary": "Logged in as teller1, looked up member 10001 (Maria Garcia, active status). Their current savings balance is $2340.18 (checking balance $512.44).",
+  "summary": "Logged into the Core Teller System as teller1, looked up member 10001 (Maria Garcia, status active), and read their current savings balance.",
   "outputs": {
     "member_id": "10001",
-    "name": "Maria Garcia",
+    "member_name": "Maria Garcia",
     "savings_balance": "$2340.18",
     "checking_balance": "$512.44"
   },
-  "recorded_at": "2026-09-22T20:55:38.310923+00:00",
+  "recorded_at": "2026-09-22T21:37:20.738803+00:00",
   "steps": [
     {
       "index": 0,
@@ -43,25 +43,37 @@
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Meridian Credit Union - Core Teller System"
+              "text": "Meridian Credit Union - Core Teller System",
+              "frame": null,
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "User ID:"
+              "text": "User ID:",
+              "frame": null,
+              "table_row": 1,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Password:"
+              "text": "Password:",
+              "frame": null,
+              "table_row": 2,
+              "table_col": 0
             },
             {
               "tag": "input",
               "role": "button",
               "name": null,
-              "text": "Sign On"
+              "text": "Sign On",
+              "frame": null,
+              "table_row": 3,
+              "table_col": 0
             }
           ],
           "dialog_message": null,
@@ -126,31 +138,46 @@
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Meridian Credit Union - Core Teller System"
+              "text": "Meridian Credit Union - Core Teller System",
+              "frame": null,
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "User ID:"
+              "text": "User ID:",
+              "frame": null,
+              "table_row": 1,
+              "table_col": 0
             },
             {
               "tag": "input",
               "role": "textbox",
               "name": null,
-              "text": "teller1"
+              "text": "teller1",
+              "frame": null,
+              "table_row": 1,
+              "table_col": 1
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Password:"
+              "text": "Password:",
+              "frame": null,
+              "table_row": 2,
+              "table_col": 0
             },
             {
               "tag": "input",
               "role": "button",
               "name": null,
-              "text": "Sign On"
+              "text": "Sign On",
+              "frame": null,
+              "table_row": 3,
+              "table_col": 0
             }
           ],
           "dialog_message": null,
@@ -166,7 +193,7 @@
           "type": "ref",
           "ref": "el_2"
         },
-        "value": "***REDACTED***"
+        "value": "{{secrets.password}}"
       },
       "action": {
         "type": "fill",
@@ -189,7 +216,7 @@
           ]
         },
         "point": null,
-        "value": "***REDACTED***"
+        "value": "{{secrets.password}}"
       },
       "result": {
         "success": true,
@@ -206,31 +233,46 @@
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Meridian Credit Union - Core Teller System"
+              "text": "Meridian Credit Union - Core Teller System",
+              "frame": null,
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "User ID:"
+              "text": "User ID:",
+              "frame": null,
+              "table_row": 1,
+              "table_col": 0
             },
             {
               "tag": "input",
               "role": "textbox",
               "name": null,
-              "text": "teller1"
+              "text": "teller1",
+              "frame": null,
+              "table_row": 1,
+              "table_col": 1
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Password:"
+              "text": "Password:",
+              "frame": null,
+              "table_row": 2,
+              "table_col": 0
             },
             {
               "tag": "input",
               "role": "button",
               "name": null,
-              "text": "Sign On"
+              "text": "Sign On",
+              "frame": null,
+              "table_row": 3,
+              "table_col": 0
             }
           ],
           "dialog_message": null,
@@ -299,49 +341,73 @@
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Meridian Credit Union - Core Teller System"
+              "text": "Meridian Credit Union - Core Teller System",
+              "frame": "banner",
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Signed on as teller1 \u00a0 Sign Off"
+              "text": "Signed on as teller1 \u00a0 Sign Off",
+              "frame": "banner",
+              "table_row": 0,
+              "table_col": 1
             },
             {
               "tag": "a",
               "role": "link",
               "name": null,
-              "text": "Sign Off"
+              "text": "Sign Off",
+              "frame": "banner",
+              "table_row": 0,
+              "table_col": 1
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Member Lookup"
+              "text": "Member Lookup",
+              "frame": "nav",
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Member ID or Last Name:"
+              "text": "Member ID or Last Name:",
+              "frame": "nav",
+              "table_row": 1,
+              "table_col": 0
             },
             {
               "tag": "input",
               "role": "button",
               "name": null,
-              "text": "Search"
+              "text": "Search",
+              "frame": "nav",
+              "table_row": 3,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Home"
+              "text": "Home",
+              "frame": "nav",
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "a",
               "role": "link",
               "name": null,
-              "text": "Home"
+              "text": "Home",
+              "frame": "nav",
+              "table_row": 0,
+              "table_col": 0
             }
           ],
           "dialog_message": null,
@@ -368,6 +434,16 @@
     },
     {
       "index": 7,
+      "tool_name": "read_page",
+      "tool_input": {
+        "ref": "frame_main",
+        "filter": "interactive"
+      },
+      "action": null,
+      "result": null
+    },
+    {
+      "index": 8,
       "tool_name": "form_input",
       "tool_input": {
         "target": {
@@ -418,55 +494,82 @@
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Meridian Credit Union - Core Teller System"
+              "text": "Meridian Credit Union - Core Teller System",
+              "frame": "banner",
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Signed on as teller1 \u00a0 Sign Off"
+              "text": "Signed on as teller1 \u00a0 Sign Off",
+              "frame": "banner",
+              "table_row": 0,
+              "table_col": 1
             },
             {
               "tag": "a",
               "role": "link",
               "name": null,
-              "text": "Sign Off"
+              "text": "Sign Off",
+              "frame": "banner",
+              "table_row": 0,
+              "table_col": 1
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Member Lookup"
+              "text": "Member Lookup",
+              "frame": "nav",
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Member ID or Last Name:"
+              "text": "Member ID or Last Name:",
+              "frame": "nav",
+              "table_row": 1,
+              "table_col": 0
             },
             {
               "tag": "input",
               "role": "textbox",
               "name": null,
-              "text": "10001"
+              "text": "10001",
+              "frame": "nav",
+              "table_row": 2,
+              "table_col": 0
             },
             {
               "tag": "input",
               "role": "button",
               "name": null,
-              "text": "Search"
+              "text": "Search",
+              "frame": "nav",
+              "table_row": 3,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Home"
+              "text": "Home",
+              "frame": "nav",
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "a",
               "role": "link",
               "name": null,
-              "text": "Home"
+              "text": "Home",
+              "frame": "nav",
+              "table_row": 0,
+              "table_col": 0
             }
           ],
           "dialog_message": null,
@@ -475,7 +578,7 @@
       }
     },
     {
-      "index": 8,
+      "index": 9,
       "tool_name": "left_click",
       "tool_input": {
         "target": {
@@ -535,115 +638,172 @@
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Meridian Credit Union - Core Teller System"
+              "text": "Meridian Credit Union - Core Teller System",
+              "frame": "banner",
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Signed on as teller1 \u00a0 Sign Off"
+              "text": "Signed on as teller1 \u00a0 Sign Off",
+              "frame": "banner",
+              "table_row": 0,
+              "table_col": 1
             },
             {
               "tag": "a",
               "role": "link",
               "name": null,
-              "text": "Sign Off"
+              "text": "Sign Off",
+              "frame": "banner",
+              "table_row": 0,
+              "table_col": 1
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Member Lookup"
+              "text": "Member Lookup",
+              "frame": "nav",
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Member ID or Last Name:"
+              "text": "Member ID or Last Name:",
+              "frame": "nav",
+              "table_row": 1,
+              "table_col": 0
             },
             {
               "tag": "input",
               "role": "textbox",
               "name": null,
-              "text": "10001"
+              "text": "10001",
+              "frame": "nav",
+              "table_row": 2,
+              "table_col": 0
             },
             {
               "tag": "input",
               "role": "button",
               "name": null,
-              "text": "Search"
+              "text": "Search",
+              "frame": "nav",
+              "table_row": 3,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Home"
+              "text": "Home",
+              "frame": "nav",
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "a",
               "role": "link",
               "name": null,
-              "text": "Home"
+              "text": "Home",
+              "frame": "nav",
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Member ID"
+              "text": "Member ID",
+              "frame": "main",
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Last Name"
+              "text": "Last Name",
+              "frame": "main",
+              "table_row": 0,
+              "table_col": 1
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "First Name"
+              "text": "First Name",
+              "frame": "main",
+              "table_row": 0,
+              "table_col": 2
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Status"
+              "text": "Status",
+              "frame": "main",
+              "table_row": 0,
+              "table_col": 3
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "10001"
+              "text": "10001",
+              "frame": "main",
+              "table_row": 1,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Garcia"
+              "text": "Garcia",
+              "frame": "main",
+              "table_row": 1,
+              "table_col": 1
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Maria"
+              "text": "Maria",
+              "frame": "main",
+              "table_row": 1,
+              "table_col": 2
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "active"
+              "text": "active",
+              "frame": "main",
+              "table_row": 1,
+              "table_col": 3
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "View"
+              "text": "View",
+              "frame": "main",
+              "table_row": 1,
+              "table_col": 4
             },
             {
               "tag": "a",
               "role": "link",
               "name": null,
-              "text": "View"
+              "text": "View",
+              "frame": "main",
+              "table_row": 1,
+              "table_col": 4
             }
           ],
           "dialog_message": null,
@@ -652,14 +812,14 @@
       }
     },
     {
-      "index": 9,
+      "index": 10,
       "tool_name": "read_page",
       "tool_input": {},
       "action": null,
       "result": null
     },
     {
-      "index": 10,
+      "index": 11,
       "tool_name": "read_page",
       "tool_input": {
         "ref": "frame_main",
@@ -669,7 +829,7 @@
       "result": null
     },
     {
-      "index": 11,
+      "index": 12,
       "tool_name": "left_click",
       "tool_input": {
         "target": {
@@ -729,121 +889,181 @@
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Meridian Credit Union - Core Teller System"
+              "text": "Meridian Credit Union - Core Teller System",
+              "frame": "banner",
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Signed on as teller1 \u00a0 Sign Off"
+              "text": "Signed on as teller1 \u00a0 Sign Off",
+              "frame": "banner",
+              "table_row": 0,
+              "table_col": 1
             },
             {
               "tag": "a",
               "role": "link",
               "name": null,
-              "text": "Sign Off"
+              "text": "Sign Off",
+              "frame": "banner",
+              "table_row": 0,
+              "table_col": 1
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Member Lookup"
+              "text": "Member Lookup",
+              "frame": "nav",
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Member ID or Last Name:"
+              "text": "Member ID or Last Name:",
+              "frame": "nav",
+              "table_row": 1,
+              "table_col": 0
             },
             {
               "tag": "input",
               "role": "textbox",
               "name": null,
-              "text": "10001"
+              "text": "10001",
+              "frame": "nav",
+              "table_row": 2,
+              "table_col": 0
             },
             {
               "tag": "input",
               "role": "button",
               "name": null,
-              "text": "Search"
+              "text": "Search",
+              "frame": "nav",
+              "table_row": 3,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Home"
+              "text": "Home",
+              "frame": "nav",
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "a",
               "role": "link",
               "name": null,
-              "text": "Home"
+              "text": "Home",
+              "frame": "nav",
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Member ID"
+              "text": "Member ID",
+              "frame": "main",
+              "table_row": 0,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "10001"
+              "text": "10001",
+              "frame": "main",
+              "table_row": 0,
+              "table_col": 1
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Name"
+              "text": "Name",
+              "frame": "main",
+              "table_row": 1,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Maria Garcia"
+              "text": "Maria Garcia",
+              "frame": "main",
+              "table_row": 1,
+              "table_col": 1
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Status"
+              "text": "Status",
+              "frame": "main",
+              "table_row": 2,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "active"
+              "text": "active",
+              "frame": "main",
+              "table_row": 2,
+              "table_col": 1
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Savings Balance"
+              "text": "Savings Balance",
+              "frame": "main",
+              "table_row": 3,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "$2340.18"
+              "text": "$2340.18",
+              "frame": "main",
+              "table_row": 3,
+              "table_col": 1
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "Checking Balance"
+              "text": "Checking Balance",
+              "frame": "main",
+              "table_row": 4,
+              "table_col": 0
             },
             {
               "tag": "td",
               "role": "cell",
               "name": null,
-              "text": "$512.44"
+              "text": "$512.44",
+              "frame": "main",
+              "table_row": 4,
+              "table_col": 1
             },
             {
               "tag": "a",
               "role": "link",
               "name": null,
-              "text": "Open New Sub-Account"
+              "text": "Open New Sub-Account",
+              "frame": "main",
+              "table_row": null,
+              "table_col": null
             }
           ],
           "dialog_message": null,
@@ -852,14 +1072,14 @@
       }
     },
     {
-      "index": 12,
+      "index": 13,
       "tool_name": "read_page",
       "tool_input": {},
       "action": null,
       "result": null
     },
     {
-      "index": 13,
+      "index": 14,
       "tool_name": "read_page",
       "tool_input": {
         "ref": "frame_main"
@@ -868,7 +1088,7 @@
       "result": null
     },
     {
-      "index": 14,
+      "index": 15,
       "tool_name": "screenshot",
       "tool_input": {},
       "action": null,

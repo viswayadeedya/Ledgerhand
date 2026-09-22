@@ -39,6 +39,21 @@ class OutputSpec(BaseModel):
     target: Target
 
 
+class BusinessOutcomeSpec(BaseModel):
+    """A named, legitimate non-success ending -- "no such member" is data
+    the caller needs, not a crash. `detect` is how replay recognizes it (the
+    same Target shape as everything else); `requires_human` marks outcomes
+    ambiguous enough that automation shouldn't just report them and move on
+    (e.g. multiple matching records) -- replay escalates those to
+    NEEDS_HUMAN instead of returning them as a normal answer.
+    """
+
+    name: str
+    description: str = ""
+    detect: Target
+    requires_human: bool = False
+
+
 class ProvenanceInfo(BaseModel):
     discovered_at: str
     discovery_model: str
@@ -63,5 +78,7 @@ class CapabilityArtifact(BaseModel):
 
     checkpoint: Target
     checkpoint_description: str
+
+    business_outcomes: list[BusinessOutcomeSpec] = []
 
     provenance: ProvenanceInfo

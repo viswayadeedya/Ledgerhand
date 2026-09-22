@@ -17,7 +17,16 @@ def real_run():
     return data, steps
 
 
+# The discovery model picks its own output key names each run (e.g.
+# "name" vs "member_name") -- not perfectly deterministic, so tests derive
+# expected keys from whatever the real run log actually contains rather
+# than hardcoding one run's exact naming.
+def _non_id_output_keys(data) -> list[str]:
+    return [k for k in data["outputs"] if k != "member_id"]
+
+
 def _build(data, steps, **overrides):
+    output_keys = _non_id_output_keys(data)
     kwargs = dict(
         capability_id="member-savings-lookup",
         title="Look up a member's savings balance",
@@ -29,16 +38,8 @@ def _build(data, steps, **overrides):
         input_descriptions={"member_id": "The member ID to look up."},
         secret_names=["username", "password"],
         secret_values={"username": "teller1"},
-        output_descriptions={
-            "savings_balance": "Current savings balance.",
-            "checking_balance": "Current checking balance.",
-            "name": "Member's full name.",
-        },
-        output_values={
-            "savings_balance": data["outputs"]["savings_balance"],
-            "checking_balance": data["outputs"]["checking_balance"],
-            "name": data["outputs"]["name"],
-        },
+        output_descriptions={k: f"Extracted value for {k}." for k in output_keys},
+        output_values={k: data["outputs"][k] for k in output_keys},
         checkpoint_text="Savings Balance",
         source_run_log=str(REAL_RUN_LOG),
     )
@@ -54,8 +55,10 @@ def test_builds_artifact_from_a_real_discovery_run(real_run):
     assert artifact.target_domain == "127.0.0.1:5055"
     assert artifact.entry_url == "http://127.0.0.1:5055/login"
     assert len(artifact.steps) > 0
-    assert len(artifact.outputs) == 3
-    assert {o.name for o in artifact.outputs} == {"savings_balance", "checking_balance", "name"}
+    expected_keys = set(_non_id_output_keys(data))
+    assert {o.name for o in artifact.outputs} == expected_keys
+    assert "savings_balance" in expected_keys
+    assert "checking_balance" in expected_keys
 
 
 def test_type_and_key_actions_are_excluded_from_replayable_steps(real_run):

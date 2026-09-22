@@ -87,6 +87,8 @@ class ElementSummary(BaseModel):
     name: str | None = None
     text: str | None = None
     frame: str | None = None  # which named frame this was scanned from; None = top-level page
+    table_row: int | None = None  # position within its table, if any -- see recorder.find_target_for_text
+    table_col: int | None = None
 
 
 class Observation(BaseModel):

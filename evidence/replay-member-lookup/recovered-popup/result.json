@@ -1,0 +1,29 @@
+{
+  "recorded_at": "2026-09-22T21:55:57.278163+00:00",
+  "artifact_id": "member-savings-lookup",
+  "artifact_version": 1,
+  "inputs": {
+    "member_id": "10001"
+  },
+  "result": {
+    "outcome": "recovered",
+    "capability_id": "member-savings-lookup",
+    "outputs": {
+      "member_id": "10001",
+      "member_name": "Maria Garcia",
+      "savings_balance": "$2340.18",
+      "checking_balance": "$512.44"
+    },
+    "business_outcome": null,
+    "business_outcome_description": null,
+    "recovery_events": [
+      {
+        "step_index": 6,
+        "kind": "dialog_dismissed",
+        "detail": "Notice: updated privacy policy takes effect Jan 1. Click OK to continue."
+      }
+    ],
+    "error": null,
+    "steps_executed": 7
+  }
+}

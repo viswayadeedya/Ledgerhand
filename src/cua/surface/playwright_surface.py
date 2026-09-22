@@ -13,7 +13,7 @@ from cua.core.models import (
 from cua.guardrails.policy import PolicyEngine
 from cua.surface.base import Surface
 from cua.surface.keys import translate_key_sequence
-from cua.surface.locator import LocatorResolutionError, resolve
+from cua.surface.locator import LocatorResolutionError, resolve_with_wait
 from cua.surface.perceive import candidates_from_description, describe_point, link_info, scan_frame
 
 
@@ -139,19 +139,31 @@ class PlaywrightSurface(Surface):
         self._settle()
         return ActionResult(success=True, observation=self.observe())
 
-    def _settle(self) -> None:
-        """Brief pause after a navigation/click so a window.onload dialog
-        (if any) has time to fire and reach our `dialog` handler before we
-        decide whether it's safe to evaluate() JS in the page -- closes the
-        race between "domcontentloaded resolves" and "load fires the popup".
+    def _settle(self, max_ms: int = 600, poll_ms: int = 50) -> None:
+        """Pause after a navigation/click so a window.onload dialog (if any)
+        has time to fire and reach our `dialog` handler before we decide
+        whether it's safe to evaluate() JS in the page -- closes the race
+        between "the page has navigated" and "load fires the popup".
+
+        Polls instead of a single flat sleep: returns as soon as a dialog
+        shows up (usually much faster than the max), but still waits out the
+        full budget on the normal, no-dialog path -- a fixed 150ms wasn't
+        reliably enough for a cross-frame navigation (a real HTTP round trip
+        to the backend, not just a JS timer) to finish before observe() went
+        looking for the dialog or scanned the page's content.
         """
-        self.page.wait_for_timeout(150)
+        waited = 0
+        while waited < max_ms:
+            if self._pending_dialog is not None:
+                return
+            self.page.wait_for_timeout(poll_ms)
+            waited += poll_ms
 
     def _resolve_target(self, action: Action):
         """Returns (locator, winning_candidate, predicted_url, predicted_method)."""
         if action.target is not None:
             scope = self.scope_for(action.target.frame)
-            locator, candidate = resolve(scope, action.target.candidates)
+            locator, candidate = resolve_with_wait(scope, action.target.candidates)
             info = link_info(locator)
             return locator, candidate, self._absolute(info.get("url")), info.get("method")
         if action.point is not None:
@@ -160,7 +172,7 @@ class PlaywrightSurface(Surface):
                 raise LocatorResolutionError(f"no element at point ({action.point.x}, {action.point.y})")
             candidates = candidates_from_description(desc)
             scope = self.scope_for(desc.get("frame"))
-            locator, candidate = resolve(scope, candidates)
+            locator, candidate = resolve_with_wait(scope, candidates)
             url = desc.get("href") or desc.get("form_action")
             return locator, candidate, self._absolute(url), desc.get("form_method")
         raise LocatorResolutionError("action has neither target nor point")
@@ -195,7 +207,7 @@ class PlaywrightSurface(Surface):
         if action.target is None:
             raise LocatorResolutionError("fill requires an explicit target")
         scope = self.scope_for(action.target.frame)
-        locator, candidate = resolve(scope, action.target.candidates)
+        locator, candidate = resolve_with_wait(scope, action.target.candidates)
         decision = self.policy.evaluate(action, human_approved=human_approved)
         if not decision.allowed:
             return ActionResult(success=False, blocked=True, policy_reason=decision.reason)
@@ -211,7 +223,7 @@ class PlaywrightSurface(Surface):
         if action.target is None:
             raise LocatorResolutionError("select requires an explicit target")
         scope = self.scope_for(action.target.frame)
-        locator, candidate = resolve(scope, action.target.candidates)
+        locator, candidate = resolve_with_wait(scope, action.target.candidates)
         decision = self.policy.evaluate(action, human_approved=human_approved)
         if not decision.allowed:
             return ActionResult(success=False, blocked=True, policy_reason=decision.reason)

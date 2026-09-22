@@ -425,7 +425,129 @@ Ordered chronologically within each part. See /REPORT.md for the synthesized wri
 
 ## Part 6 — Replay + error taxonomy
 
-_(not yet built)_
+- **Five-way outcome taxonomy**: `SUCCESS`, `RECOVERED`, `BUSINESS_OUTCOME`,
+  `NEEDS_HUMAN`, `HARD_FAILURE`. The brief's own three-way split (expected
+  business outcome / recoverable condition / hard failure) maps onto the
+  first three and the last; `RECOVERED` and `NEEDS_HUMAN` are additions:
+  `RECOVERED` is a *terminal* outcome distinct from a clean `SUCCESS` --
+  same outputs, but flagged because it only got there after handling a
+  hiccup (a dialog, a dropped session), which matters for spotting a flaky
+  artifact over many replays even though the caller's data is fine.
+  `NEEDS_HUMAN` is the direct hook into Part 7: a policy-blocked risky step,
+  or a business outcome explicitly marked `requires_human` (e.g. an
+  ambiguous multi-match result), ends here instead of either succeeding
+  silently or being reported as an ordinary answer.
+- **Business outcomes are detected the moment a step fails to resolve, not
+  only after every step in the recipe has already run.** First cut only
+  checked `artifact.business_outcomes` once, after the full step list
+  finished -- which meant "member not found" was reported as a
+  `HARD_FAILURE`, because there's no "View" result to click on a
+  not-found page, so the very next recorded step (by design, since it
+  assumes the happy path) fails to resolve before the engine ever got to
+  ask "did we land somewhere recognized instead?". Fixed by extracting a
+  shared `_check_business_outcomes()` called both post-steps (the checkpoint
+  path) and from inside a failed step's error handling, before that failure
+  is allowed to become a `HARD_FAILURE`. A business outcome mid-flow is a
+  real answer, not a bug to paper over.
+- **Output locators had to move from matching *the value* to matching *the
+  cell*.** The first artifact built in Part 5 located each output by
+  searching for its literal discovery-time text ("$2340.18") and storing a
+  `TEXT` candidate for that exact string. Replaying the identical artifact
+  against a *different* member (10002 instead of 10001) failed outright:
+  "$2340.18" is Maria Garcia's balance, and Carlos Garcia's page will never
+  contain it. Fixed by preferring a `TABLE_POSITION` candidate (row/col,
+  content-independent) for outputs specifically, falling back to `TEXT`
+  only when no table position is available -- required adding
+  `ElementSummary.table_row`/`table_col` (the lightweight `Observation`
+  scan didn't track position at all; only the richer read_page/find scan
+  did) and extending the scan JS to compute it. Verified by replaying the
+  *same* artifact against member 10002 and getting Carlos Garcia's real,
+  different, correctly-read balance back -- see
+  `evidence/replay-member-lookup/README.md`.
+- **The same value-locking mistake, one layer up: a business outcome's own
+  detect text.** `add_business_outcome()` was first built the same way --
+  search for a phrase, then store the *matched element's full text* as the
+  candidate. Captured against a probe search for member "99999", the stored
+  text was "No member found matching \"99999\".", which only ever matches
+  that one nonexistent ID again. Fixed by storing the caller's own search
+  phrase ("No member found") instead of the matched element's text --
+  Playwright's `get_by_text()` matches substrings by default, so the
+  shorter, stable phrase still finds the message regardless of which ID is
+  in it. This is the same lesson as the output-locking bug, in a different
+  part of the recorder, which is worth naming plainly: matching by *content*
+  is fine for detecting an element once, but wrong for building a locator
+  meant to keep working after the content changes.
+- **A locator resolved instantly (`.count()`, no wait) is right for "does
+  this exist right now" and wrong for "has the page finished navigating
+  yet."** `resolve()`'s single, instant DOM check is deliberate for the
+  strict single-match semantics locator.py's own tests rely on, but using it
+  for checkpoint/output resolution right after a cross-frame navigation
+  raced against real backend response time. Added `resolve_with_wait()`
+  (bounded polling, default 3-5s) as a separate function -- `resolve()`
+  itself is untouched, still the fast, non-waiting primitive for tests and
+  the recorder (which only ever looks at already-captured, static data).
+  Surface's own step execution and the replay engine's ending resolution
+  both switched to the waiting version; discovery's `browser_tools.py` still
+  goes through the same `Surface.act()` path, so it benefits too.
+- **A dialog can appear as a side effect of a *successful* action, not only
+  as the reason one failed.** The member-detail page's popup fires from a
+  `window.onload` handler *after* the click that navigated there already
+  reported success -- so the recovery logic (originally written to trigger
+  only inside a failed step's retry loop) never ran, and the *next* locator
+  resolution (checkpoint, or the next step) hung against a page whose
+  script/render pipeline the dialog was blocking (the same underlying
+  Playwright behavior Part 3 found for `evaluate()`/`screenshot()`, now
+  hitting `resolve_with_wait()`'s `.count()` check too). Fixed by checking
+  for and dismissing a pending dialog after every *successful* action as
+  well, plus defensively at the start of ending-resolution.
+- **The session-expiry heuristic broke on a query string.** `_looks_like_
+  session_expired()` first compared full URLs; our own fake app's "your
+  session expired" redirect is `/login?expired=1`, which never equals the
+  bare `entry_url` and doesn't end in exactly `/login` either. Fixed by
+  comparing `urlsplit(...).path` on both sides -- a reminder that a
+  same-page-different-query-string redirect is a completely normal, expected
+  shape for this exact condition, not an edge case to special-case away.
+- **Recovery is bounded to one retry per step, always** (`MAX_RECOVERY_
+  ATTEMPTS = 1`), whether it's a dismissed dialog or a re-authentication.
+  Re-authentication replays the exact step prefix that already worked once
+  in this same run (not a guess at "the login steps" by name or position
+  convention) -- `ctx.rendered_steps[:idx]`, the literal already-rendered
+  actions.
+- **`scan_frame`'s element selector was too narrow for general text
+  content.** Building the `member_not_found` business outcome failed
+  silently at first -- the captured observation had zero elements from the
+  "main" frame at all. The fake app's not-found message is a bare `<p>`,
+  and the selector (`a,button,input,select,textarea,td,th`) never matched
+  paragraph text, only table cells and interactive controls. Added
+  `p,li,h1..h6` to the selector used for `Observation.elements` (not to
+  `read_page`/`find`'s selector, which deliberately stays interactive-only
+  per the Part 4 design).
+- **`add_business_outcome()` is deterministic exploration, not LLM
+  discovery**, and says so in its own docstring: `scripts/
+  capture_business_outcome.py` drives the artifact's own recorded
+  login+search step prefix (via `render_action`, the same machinery replay
+  uses) against a known-invalid member ID and captures what's really there,
+  rather than an LLM re-discovering a fact already known from building the
+  fake app in Part 1. The distinction matters for the write-up: the one
+  *required* genuine LLM-driven run is Part 4's discovery session; enriching
+  an artifact with known failure modes afterward is closer to how a human
+  engineer would actually build out a runbook's edge cases, and pretending
+  otherwise would overstate what's LLM-driven here.
+- **Guardrails apply to replay exactly the same way they apply to
+  discovery** -- `ReplayEngine` calls `Surface.act()` for every step, the
+  same method `browser_tools.py` calls, so the same `PolicyEngine.evaluate()`
+  checkpoint (Part 2/3) runs regardless of caller. `test_replay_blocks_
+  risky_action_and_needs_human_approval` proves this independently for
+  replay specifically (not just re-relying on Part 3's proof), including
+  that `human_approved=True` is the only way a blocked step proceeds.
+- **49 tests pass repo-wide**, 8 of them new in `tests/test_replay.py`
+  (success, cross-member generalization, business outcome, both recovery
+  paths, guardrail blocking, hard-failure detail, missing-params
+  validation) -- every bug described above has a regression test that
+  reproduces the exact failing scenario first, not just a description of
+  the fix. Plus three real, tracked replay runs against the live fake app
+  in `evidence/replay-member-lookup/` (success, business outcome, recovered
+  popup) with screenshots and full `ReplayResult` JSON for each.
 
 ## Part 7 — Human handoff
 

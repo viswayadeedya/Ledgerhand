@@ -111,7 +111,10 @@ _IFRAME_HIT_JS = """
 
 _SCAN_JS = """
 () => {
-  const sel = 'a,button,input,select,textarea,td,th';
+  // td/th/p/li/headings: informational text a business-outcome or
+  // checkpoint locator might need to match, even outside a table -- our own
+  // fake app's "No member found" message is a bare <p>, not a table cell.
+  const sel = 'a,button,input,select,textarea,td,th,p,li,h1,h2,h3,h4,h5,h6';
   const nodes = Array.from(document.querySelectorAll(sel)).slice(0, 120);
   function roleOf(node) {
     const tag = node.tagName.toLowerCase();
@@ -126,21 +129,37 @@ _SCAN_JS = """
     }
     if (tag === 'select') return 'combobox';
     if (tag === 'textarea') return 'textbox';
-    return 'cell';
+    if (tag === 'td' || tag === 'th') return 'cell';
+    return 'text';
   }
   function safeText(node) {
     const isPw = node.tagName.toLowerCase() === 'input' && (node.getAttribute('type') || '').toLowerCase() === 'password';
     if (isPw) return '';
     return (node.innerText || node.value || '').trim();
   }
+  function tablePos(node) {
+    const cell = node.closest('td,th');
+    if (!cell) return null;
+    const row = cell.parentElement;
+    const table = cell.closest('table');
+    if (!row || !table) return null;
+    const col = Array.prototype.indexOf.call(row.children, cell);
+    const rowIdx = Array.prototype.indexOf.call(table.querySelectorAll('tr'), row);
+    return {row: rowIdx, col: col};
+  }
   return nodes
     .filter(n => n.offsetParent !== null)
-    .map(n => ({
-      tag: n.tagName.toLowerCase(),
-      role: roleOf(n),
-      name: n.getAttribute('aria-label') || null,
-      text: safeText(n).slice(0, 60),
-    }))
+    .map(n => {
+      const t = tablePos(n);
+      return {
+        tag: n.tagName.toLowerCase(),
+        role: roleOf(n),
+        name: n.getAttribute('aria-label') || null,
+        text: safeText(n).slice(0, 60),
+        table_row: t ? t.row : null,
+        table_col: t ? t.col : null,
+      };
+    })
     .filter(e => e.text || e.name)
     .slice(0, 80);
 }
