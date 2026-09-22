@@ -711,4 +711,26 @@ up for the end. This part is what's actually left once that's true.
 
 ## Part 9 — README + REPORT
 
-_(not yet built)_
+- **REPORT.md is a distillation, not a copy.** This file (`DECISIONS.md`)
+  is the chronological, complete record -- every decision, every real bug
+  found and fixed, in the order it happened, useful for understanding *how*
+  the system got here. `REPORT.md` is written for a reviewer meeting the
+  project cold: the same underlying reasoning, reorganized around the
+  seven required headings and cut down to what's load-bearing for
+  evaluation, not the debugging journey. Deliberately kept close to the
+  brief's own "~1-3 pages" guidance rather than trying to include
+  everything this log has -- a reviewer who wants the full story already
+  has this file.
+- **Every command in README.md was actually run before being written
+  down**, not transcribed from memory of what the CLI *should* accept --
+  including the PowerShell-specific backtick line-continuation syntax and
+  the `Invoke-RestMethod` fault-arming calls (real `curl` flags don't work
+  against PowerShell's `curl` alias, a genuine trip-up earlier in this
+  project's own testing -- see the conversation around Part 7's first
+  handoff walkthrough). Verified end to end: activate venv, arm a fault,
+  replay, see the expected `recovered` outcome with the expected balance.
+- **README.md leads with what a reader needs to *do*, REPORT.md with what
+  a reader needs to *understand*.** The split mirrors the brief's own two
+  deliverables rather than merging them: setup + exact runnable commands
+  in one file, architecture/trade-off reasoning in the other, so neither
+  has to do both jobs at once.
