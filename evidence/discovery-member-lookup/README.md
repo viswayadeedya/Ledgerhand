@@ -19,15 +19,15 @@ python -m cua.agent \
   --domain "127.0.0.1:5055" \
   --username teller1 --password teller123 \
   --max-steps 20 \
-  --evidence-dir "evidence/runs/discovery-member-lookup"
+  --evidence-dir "evidence/discovery-member-lookup"
 ```
 
-**Outcome:** `success`, in 15 recorded steps.
+**Outcome:** `success`, in 16 recorded steps.
 
 ```json
 {
   "member_id": "10001",
-  "name": "Maria Garcia",
+  "member_name": "Maria Garcia",
   "savings_balance": "$2340.18",
   "checking_balance": "$512.44"
 }
@@ -79,11 +79,13 @@ each surfaced a genuine bug, not a flaky test:
    - `RecordedStep.action.value` -- the internal `Action` object needs the
      *real* value to actually perform the fill, and that same object was
      being stored straight into the log. Fixed by logging a redacted copy of
-     the action (`action.model_copy(update={"value": "***REDACTED***"})`)
-     built *after* execution, never the one used to act.
+     the action built *after* execution, never the one used to act.
 
    Each fix has a regression test in `tests/test_browser_tools.py` and
    `tests/test_surface.py`. See `DECISIONS.md` Part 4 for the full story --
    it's a concrete illustration of why a single redaction pass in one place
    isn't enough when the same secret value can flow through a system on more
-   than one path.
+   than one path. (A verified `input[type=password]` value is now redacted
+   to the literal placeholder `{{secrets.password}}`, not a generic
+   `***REDACTED***` marker -- see `DECISIONS.md` Part 5 for why that made
+   the artifact recorder's job simpler too.)

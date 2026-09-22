@@ -659,7 +659,55 @@ Ordered chronologically within each part. See /REPORT.md for the synthesized wri
 
 ## Part 8 — Evidence + tests
 
-_(not yet built)_
+Mostly an audit pass, not new construction: evidence and tests were built
+incrementally alongside every part from 4 onward (real runs, real
+screenshots, real regression tests for each bug found), rather than saved
+up for the end. This part is what's actually left once that's true.
+
+- **Added `tests/test_fake_app.py` -- the one real coverage gap.** Every
+  other layer (guardrails, locator, surface, browser_tools, recorder,
+  replay, handoff) has direct tests, but the fake app itself
+  (`src/cua/fake_app/`) had only ever been exercised *through* those layers,
+  via a real Playwright browser -- correct, but slow, and never testing the
+  app's own HTTP logic in isolation. 16 new tests via FastAPI's `TestClient`
+  (no browser, no Playwright) covering auth, search (found/not-found/
+  natural duplicates), the sub-account flow, every fault's fire-once
+  behavior, and admin reset -- all in well under a second. 69 tests pass
+  repo-wide now.
+- **Full-repo secret sweep, not just the specific files already checked.**
+  `git grep -liE "teller123|sk-ant-api"` across every tracked file, not
+  just the evidence directories redaction bugs were found in earlier. Every
+  hit is a legitimate, intentional occurrence of the fake app's own
+  hardcoded demo credential (its definition in `fake_app/main.py`, and
+  references to it in docs/scripts/tests) -- none in any run log, result,
+  or artifact file. No real API key pattern anywhere. `.env` itself was
+  confirmed never tracked, at any point in git history.
+- **Added a top-level `/evidence/README.md`** indexing the four run
+  folders (discovery, replay, handoff) with what each demonstrates and the
+  exact commands that produced them, plus an explicit note on what
+  `evidence/runs/` is (git-ignored scratch, not evidence) so that
+  distinction doesn't have to be inferred.
+- **Fixed drift between evidence READMEs and the files they describe.**
+  The discovery evidence folder was regenerated several times over the
+  course of Parts 5-6 (chasing the `ElementSummary.frame` and
+  `table_row`/`table_col` fixes), and its README had accumulated stale
+  claims -- a step count from an earlier run (15 vs. the current 16), an
+  output key name that had changed (`name` vs. `member_name`, since the
+  model doesn't name its own outputs identically every run), and a
+  redaction-marker example (`***REDACTED***`) that predated the Part 5
+  switch to the literal `{{secrets.password}}` placeholder. Fixed by
+  diffing every evidence README's specific claims against the actual
+  current files rather than trusting what was written when each was first
+  produced -- exactly the kind of small, easy-to-miss inconsistency an
+  audit pass exists to catch.
+- **What this part deliberately did not add**: a static type-checker
+  (mypy) as a CI-style gate. The codebase uses type hints and Pydantic
+  models consistently throughout by convention, and the brief's own
+  evaluation criteria lists code quality last and asks for "reasonably
+  typed," not a fully strict-mode pass -- adding one this late and chasing
+  every finding would have been schedule risk for a lower-weighted
+  criterion than the ones the rest of this project spent its time on.
+  Noted as a real cut, not a silent omission -- see `REPORT.md` Section 7.
 
 ## Part 9 — README + REPORT
 
