@@ -38,6 +38,29 @@ class OutputSpec(BaseModel):
     description: str = ""
     target: Target
 
+    must_equal: str | None = None
+    """An assertion that this output matches something the caller supplied,
+    written as a template (e.g. "{{inputs.member_id}}").
+
+    This is what turns a checkpoint from "a savings balance is on screen"
+    into "the *right member's* savings balance is on screen". Every
+    member's detail page says "Savings Balance", so without this, landing
+    on the wrong record returns SUCCESS with someone else's money. A
+    mismatch is a HARD_FAILURE and no outputs are returned at all -- in
+    this domain a confidently wrong answer is worse than a crash.
+
+    Only possible when the page actually displays the identifier; a
+    capability whose result page never echoes its input can't prove
+    identity this way.
+    """
+
+    sensitive: bool = False
+    """Marks a value that must never be written down in full. It still
+    flows to the caller intact (that's the point of the capability) -- but
+    anywhere it gets persisted or printed, it's masked to its last couple
+    of characters. See guardrails.redact.mask_partial.
+    """
+
 
 class BusinessOutcomeSpec(BaseModel):
     """A named, legitimate non-success ending -- "no such member" is data

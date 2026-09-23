@@ -50,3 +50,21 @@ def redact_text(text: str) -> str:
     text = _SSN_PATTERN.sub(REDACTED, text)
     text = _CARD_PATTERN.sub(REDACTED, text)
     return text
+
+
+def mask_partial(value: str | None, keep: int = 2) -> str:
+    """Masks a sensitive value but keeps its last few characters.
+
+    Used wherever a sensitive value has to be *written down* -- an error
+    message, a log line, an evidence file. Full redaction there would make
+    a failure undebuggable (an operator can't tell which request went
+    wrong), while the full value shouldn't be persisted at all. Keeping the
+    tail lets a human correlate "***01" with the member ID they asked
+    about, without the record itself landing on disk.
+    """
+    if not value:
+        return REDACTED
+    text = str(value)
+    if len(text) <= keep:
+        return "***"
+    return "***" + text[-keep:]

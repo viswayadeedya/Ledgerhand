@@ -64,6 +64,8 @@ def build_artifact(
     secret_values: dict[str, str] | None = None,
     output_descriptions: dict[str, str] | None = None,
     output_values: dict[str, str] | None = None,
+    output_assertions: dict[str, str] | None = None,
+    sensitive_outputs: list[str] | None = None,
     checkpoint_text: str = "",
     source_run_log: str | None = None,
     version: int = 1,
@@ -74,6 +76,8 @@ def build_artifact(
     secret_values = secret_values or {}
     output_descriptions = output_descriptions or {}
     output_values = output_values or {}
+    output_assertions = output_assertions or {}
+    sensitive_outputs = sensitive_outputs or []
 
     replayable = [s.action for s in steps if s.action is not None and s.action.type in _REPLAYABLE_TYPES]
     if not replayable:
@@ -93,7 +97,14 @@ def build_artifact(
                 f"could not find an element matching output '{name}'={value!r} in the final observation"
             )
         outputs.append(
-            OutputSpec(name=name, type="string", description=output_descriptions.get(name, ""), target=target)
+            OutputSpec(
+                name=name,
+                type="string",
+                description=output_descriptions.get(name, ""),
+                target=target,
+                must_equal=output_assertions.get(name),
+                sensitive=name in sensitive_outputs,
+            )
         )
 
     if not checkpoint_text:

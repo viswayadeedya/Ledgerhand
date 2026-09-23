@@ -15,6 +15,13 @@ class FaultState:
     popup: bool = False
     slow_load: bool = False
     duplicate_members: bool = False
+    wrong_member: bool = False
+    """Serves a different member's detail page than the one requested, with
+    no error, no redirect, and a perfectly normal-looking page. The nastiest
+    failure in this set: every other fault is visible, this one is only
+    detectable by checking that the record on screen is the record that was
+    asked for.
+    """
 
     def as_dict(self) -> dict[str, bool]:
         return {f.name: getattr(self, f.name) for f in fields(self)}

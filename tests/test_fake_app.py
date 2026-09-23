@@ -134,6 +134,22 @@ def test_duplicate_members_fault_fires_once_then_auto_disarms(client):
     assert "Maria" in second.text
 
 
+def test_wrong_member_fault_serves_a_different_record_silently(client):
+    """The fault this exists to catch: a 200 OK, a normal-looking page, and
+    the wrong person's money on it.
+    """
+    _login(client)
+    client.post("/admin/faults/api", json={"fault": "wrong_member", "armed": True})
+
+    served = client.get("/app/member/10001")
+    assert served.status_code == 200
+    assert "Maria" not in served.text  # not the member that was asked for
+    assert "Savings Balance" in served.text  # and nothing on the page says so
+
+    # fires once, then the app behaves again
+    assert "Maria" in client.get("/app/member/10001").text
+
+
 def test_session_expired_fault_redirects_with_flag(client):
     _login(client)
     client.post("/admin/faults/api", json={"fault": "session_expired", "armed": True})

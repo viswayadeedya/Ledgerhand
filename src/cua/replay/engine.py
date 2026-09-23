@@ -8,13 +8,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from cua.artifacts.schema import CapabilityArtifact, Target
-from cua.core.models import Action, ActionType
+from cua.artifacts.schema import CapabilityArtifact, OutputSpec, Target
+from cua.core.models import Action, ActionResult, ActionType
 from cua.guardrails.policy import PolicyEngine
+from cua.guardrails.redact import mask_partial
 from cua.handoff.handler import HandoffHandler
 from cua.handoff.models import EscalationRecord, EscalationRequest, HandoffAction, HandoffDecision
-from cua.replay.models import RecoveryEvent, ReplayError, ReplayOutcome, ReplayResult
-from cua.replay.render import render_action
+from cua.replay.models import FailureReason, RecoveryEvent, ReplayError, ReplayOutcome, ReplayResult
+from cua.replay.render import RenderError, render_action, render_value
 from cua.surface.locator import LocatorResolutionError, resolve_with_wait
 from cua.surface.playwright_surface import PlaywrightSurface
 
@@ -170,6 +171,7 @@ class ReplayEngine:
                             outcome=ReplayOutcome.NEEDS_HUMAN,
                             capability_id=ctx.artifact.id,
                             error=ReplayError(
+                                reason_code=FailureReason.POLICY_BLOCKED,
                                 step_index=idx,
                                 expected="action allowed by policy",
                                 observed=result.policy_reason or "blocked",
@@ -193,6 +195,7 @@ class ReplayEngine:
                             outcome=ReplayOutcome.HARD_FAILURE,
                             capability_id=ctx.artifact.id,
                             error=ReplayError(
+                                reason_code=_reason_for(retry),
                                 step_index=idx,
                                 expected=_describe_action(action),
                                 observed=retry.error or "failed even after human approval",
@@ -207,6 +210,7 @@ class ReplayEngine:
                         outcome=ReplayOutcome.NEEDS_HUMAN,
                         capability_id=ctx.artifact.id,
                         error=ReplayError(
+                            reason_code=FailureReason.OPERATOR_ABANDONED,
                             step_index=idx,
                             expected="action allowed by policy",
                             observed=result.policy_reason or "blocked",
@@ -259,6 +263,7 @@ class ReplayEngine:
                 outcome=ReplayOutcome.HARD_FAILURE,
                 capability_id=ctx.artifact.id,
                 error=ReplayError(
+                    reason_code=_reason_for(result),
                     step_index=idx,
                     expected=_describe_action(action),
                     observed=result.error or "action did not succeed",
@@ -280,6 +285,7 @@ class ReplayEngine:
                         outcome=ReplayOutcome.HARD_FAILURE,
                         capability_id=ctx.artifact.id,
                         error=ReplayError(
+                            reason_code=FailureReason.RECOVERY_FAILED,
                             step_index=idx,
                             expected="session re-authentication to succeed",
                             observed=r.error or "unknown error",
@@ -315,6 +321,7 @@ class ReplayEngine:
                             outcome=ReplayOutcome.HARD_FAILURE,
                             capability_id=ctx.artifact.id,
                             error=ReplayError(
+                                reason_code=FailureReason.ELEMENT_NOT_FOUND,
                                 step_index=None,
                                 expected=f"output '{spec.name}' locator to resolve",
                                 observed="not found",
@@ -322,10 +329,16 @@ class ReplayEngine:
                             ),
                         )
                     )
+                self._assert_identity(ctx, spec, value)
                 outputs[spec.name] = value
             needed_help = ctx.recovery_events or ctx.escalations
             outcome = ReplayOutcome.RECOVERED if needed_help else ReplayOutcome.SUCCESS
-            return ReplayResult(outcome=outcome, capability_id=ctx.artifact.id, outputs=outputs)
+            return ReplayResult(
+                outcome=outcome,
+                capability_id=ctx.artifact.id,
+                outputs=outputs,
+                sensitive_outputs=[s.name for s in ctx.artifact.outputs if s.sensitive],
+            )
 
         outcome_result = self._check_business_outcomes(ctx)
         if outcome_result is not None:
@@ -336,10 +349,44 @@ class ReplayEngine:
                 outcome=ReplayOutcome.HARD_FAILURE,
                 capability_id=ctx.artifact.id,
                 error=ReplayError(
+                    reason_code=FailureReason.UNRECOGNIZED_STATE,
                     step_index=None,
                     expected=ctx.artifact.checkpoint_description,
                     observed="neither the checkpoint nor any known business outcome matched",
                     message="Reached the end of the recorded steps in an unrecognized state.",
+                ),
+            )
+        )
+
+    def _assert_identity(self, ctx: _RunContext, spec: OutputSpec, value: str) -> None:
+        """Proves the page is showing the record that was actually asked for.
+
+        Raises rather than returning a flag on purpose: a failed identity
+        check must abort before `outputs` is returned, so a value belonging
+        to the wrong record can never reach the caller even partially.
+        """
+        if not spec.must_equal:
+            return
+        expected = render_value(spec.must_equal, ctx.inputs, ctx.secrets)
+        if value.strip() == (expected or "").strip():
+            return
+
+        shown_expected = mask_partial(expected) if spec.sensitive else expected
+        shown_observed = mask_partial(value) if spec.sensitive else value
+        raise _ReplayEnd(
+            ReplayResult(
+                outcome=ReplayOutcome.HARD_FAILURE,
+                capability_id=ctx.artifact.id,
+                error=ReplayError(
+                    reason_code=FailureReason.IDENTITY_MISMATCH,
+                    step_index=None,
+                    expected=f"output '{spec.name}' to equal {shown_expected!r} (asserted by {spec.must_equal})",
+                    observed=f"{shown_observed!r}",
+                    message=(
+                        f"Identity check failed after {len(ctx.rendered_steps)} steps: the page's "
+                        f"'{spec.name}' is {shown_observed!r}, but this run asked for {shown_expected!r}. "
+                        f"Refusing to return data that may belong to a different record."
+                    ),
                 ),
             )
         )
@@ -384,6 +431,16 @@ class ReplayEngine:
         return None
 
 
+def _reason_for(result: ActionResult) -> FailureReason:
+    """Maps the surface's own classification of a failure onto a reason
+    code, rather than pattern-matching the error text.
+    """
+    return {
+        "locator_not_found": FailureReason.ELEMENT_NOT_FOUND,
+        "timeout": FailureReason.TIMEOUT,
+    }.get(result.error_kind or "", FailureReason.STEP_FAILED)
+
+
 def _validate_params(artifact: CapabilityArtifact, inputs: dict[str, str], secrets: dict[str, str]) -> None:
     missing_inputs = [spec.name for spec in artifact.inputs if spec.name not in inputs]
     if missing_inputs:
@@ -391,6 +448,16 @@ def _validate_params(artifact: CapabilityArtifact, inputs: dict[str, str], secre
     missing_secrets = [spec.name for spec in artifact.secrets if spec.name not in secrets]
     if missing_secrets:
         raise ValueError(f"missing required secrets: {', '.join(missing_secrets)}")
+
+    # Render every assertion template up front so a malformed one fails
+    # here -- before a browser opens -- instead of halfway through a run.
+    for spec in artifact.outputs:
+        if not spec.must_equal:
+            continue
+        try:
+            render_value(spec.must_equal, inputs, secrets)
+        except RenderError as exc:
+            raise ValueError(f"output '{spec.name}' has an unresolvable must_equal ({spec.must_equal}): {exc}") from exc
 
 
 def _safe_observe(surface: PlaywrightSurface):

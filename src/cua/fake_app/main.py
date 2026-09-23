@@ -147,6 +147,15 @@ def member_detail(request: Request, member_id: int):
     member = data.get_member(member_id)
     if not member:
         return templates.TemplateResponse(request, "not_found.html", {"query": str(member_id)})
+    if FAULTS.consume("wrong_member"):
+        # Stands in for a real "served the wrong record" bug (a stale cache,
+        # a mis-keyed join). Deliberately silent: the page renders normally,
+        # just for somebody else.
+        other = next(
+            (m for m in data.MEMBERS.values() if m["id"] != member_id and m["status"] == "active"), None
+        )
+        if other is not None:
+            member = other
     if member["status"] == "closed":
         return templates.TemplateResponse(
             request, "member_detail.html", {"member": member, "popup": False}

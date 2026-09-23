@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Dialog, Page, sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from cua.core.models import (
     Action,
@@ -107,11 +108,22 @@ class PlaywrightSurface(Surface):
             ActionType.KEY: self._do_key,
         }.get(action.type)
         if handler is None:
-            return ActionResult(success=False, error=f"unsupported action type: {action.type}")
+            return ActionResult(
+                success=False, error=f"unsupported action type: {action.type}", error_kind="surface_error"
+            )
         try:
             return handler(action, human_approved)
         except LocatorResolutionError as exc:
-            return ActionResult(success=False, error=str(exc))
+            return ActionResult(success=False, error=str(exc), error_kind="locator_not_found")
+        except PlaywrightTimeoutError as exc:
+            return ActionResult(success=False, error=str(exc), error_kind="timeout")
+        except Exception as exc:
+            # Anything else the browser throws (a closed page, a navigation
+            # error mid-click) used to escape act() entirely and crash the
+            # whole run instead of returning a structured failure the caller
+            # could report on. The exception type is kept in the message so
+            # nothing is lost by catching broadly here.
+            return ActionResult(success=False, error=f"{type(exc).__name__}: {exc}", error_kind="surface_error")
 
     def scope_for(self, frame_name: str | None):
         if frame_name is None:

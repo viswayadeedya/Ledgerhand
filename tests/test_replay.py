@@ -7,7 +7,7 @@ import yaml
 from cua.artifacts.schema import CapabilityArtifact
 from cua.core.models import Action, ActionType, LocatorCandidate, LocatorStrategy, Target
 from cua.replay.engine import ReplayEngine
-from cua.replay.models import ReplayOutcome
+from cua.replay.models import FailureReason, ReplayOutcome
 from tests.conftest import arm_fault as _arm_fault
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +40,20 @@ def artifact(fake_app_server) -> CapabilityArtifact:
 @pytest.fixture
 def engine(test_policy, tmp_path) -> ReplayEngine:
     return ReplayEngine(policy=test_policy, headless=True, evidence_dir=tmp_path)
+
+
+def _with_identity_assertion(
+    artifact: CapabilityArtifact, *, sensitive: bool = False, template: str = "{{inputs.member_id}}"
+) -> CapabilityArtifact:
+    """Adds the member_id identity assertion the committed artifact will
+    carry once it's regenerated -- kept here so these tests don't depend on
+    that having happened yet.
+    """
+    outputs = [
+        o.model_copy(update={"must_equal": template, "sensitive": sensitive}) if o.name == "member_id" else o
+        for o in artifact.outputs
+    ]
+    return artifact.model_copy(update={"outputs": outputs})
 
 
 def test_replay_succeeds_and_matches_real_fixture_data(engine, artifact):
@@ -177,6 +191,53 @@ def test_replay_hard_failure_has_debuggable_detail(engine, artifact):
     assert result.error is not None
     assert result.error.step_index == 1
     assert "This Button Does Not Exist" in result.error.expected
+
+
+def test_identity_assertion_passes_on_the_right_record(engine, artifact):
+    """The assertion must not cry wolf: a correct run still succeeds."""
+    result = engine.run(_with_identity_assertion(artifact), inputs={"member_id": "10001"}, secrets=SECRETS)
+    assert result.outcome == ReplayOutcome.SUCCESS
+    assert result.outputs["member_id"] == "10001"
+
+
+def test_wrong_record_is_hard_failure_not_success(engine, artifact, fake_app_server):
+    """The whole point of Phase 1. The app serves a different member's page
+    with a 200 and no visible error; the old checkpoint ("Savings Balance"
+    is on screen) is perfectly true of that page, so replay would have
+    returned SUCCESS with someone else's balance. In this domain a
+    confidently wrong answer is worse than a crash.
+    """
+    _arm_fault(fake_app_server, "wrong_member", True)
+    result = engine.run(_with_identity_assertion(artifact), inputs={"member_id": "10001"}, secrets=SECRETS)
+
+    assert result.outcome == ReplayOutcome.HARD_FAILURE
+    assert result.error is not None
+    assert result.error.reason_code == FailureReason.IDENTITY_MISMATCH
+    assert result.outputs == {}  # nothing escapes, not even partially
+    assert "different record" in result.error.message
+
+
+def test_identity_mismatch_masks_sensitive_values_in_the_error(engine, artifact, fake_app_server):
+    _arm_fault(fake_app_server, "wrong_member", True)
+    result = engine.run(
+        _with_identity_assertion(artifact, sensitive=True), inputs={"member_id": "10001"}, secrets=SECRETS
+    )
+
+    assert result.outcome == ReplayOutcome.HARD_FAILURE
+    blob = f"{result.error.message} {result.error.expected} {result.error.observed}"
+    assert "10002" not in blob  # the record that was wrongly served
+    assert "10001" not in blob  # and the one that was asked for
+    assert "***02" in blob  # but enough tail to debug which was which
+    assert "***01" in blob
+
+
+def test_unresolvable_assertion_fails_before_opening_a_browser(engine, artifact):
+    """A malformed artifact should fail loudly at the door, not halfway
+    through a run with a browser already open.
+    """
+    broken = _with_identity_assertion(artifact, template="{{inputs.not_a_real_input}}")
+    with pytest.raises(ValueError, match="unresolvable must_equal"):
+        engine.run(broken, inputs={"member_id": "10001"}, secrets=SECRETS)
 
 
 def test_replay_requires_declared_inputs_and_secrets(engine, artifact):

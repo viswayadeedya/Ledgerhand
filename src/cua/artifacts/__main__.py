@@ -54,6 +54,23 @@ def main() -> None:
             "reliably re-extracted at replay time and are better left out."
         ),
     )
+    parser.add_argument(
+        "--assert-equals",
+        action="append",
+        metavar="name=template",
+        help=(
+            "Repeatable; asserts an extracted output matches a caller-supplied value, e.g. "
+            '--assert-equals "member_id={{inputs.member_id}}". This is what proves replay landed on the '
+            "RIGHT record -- without it, a checkpoint like 'Savings Balance is on screen' is true of every "
+            "member's page. A mismatch is a HARD_FAILURE and no outputs are returned."
+        ),
+    )
+    parser.add_argument(
+        "--sensitive-output",
+        action="append",
+        metavar="name",
+        help="Repeatable; marks an output whose value must be masked anywhere it's printed or persisted",
+    )
     parser.add_argument("--checkpoint-text", required=True)
 
     args = parser.parse_args()
@@ -80,6 +97,8 @@ def main() -> None:
         secret_values=_parse_kv(args.secret_value),
         output_descriptions=_parse_kv(args.output_desc),
         output_values=output_values,
+        output_assertions=_parse_kv(args.assert_equals),
+        sensitive_outputs=args.sensitive_output or [],
         checkpoint_text=args.checkpoint_text,
         source_run_log=args.run_log,
         version=args.version,

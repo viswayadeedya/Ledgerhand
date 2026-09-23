@@ -734,3 +734,79 @@ up for the end. This part is what's actually left once that's true.
   deliverables rather than merging them: setup + exact runnable commands
   in one file, architecture/trade-off reasoning in the other, so neither
   has to do both jobs at once.
+
+## Post-review hardening — Phase 1: prove it's the right record
+
+Review feedback: the checkpoint only asserted that "Savings Balance"
+appeared on the page -- text that is true of *every* member's detail page.
+Land on the wrong record and replay returns SUCCESS with someone else's
+money. In banking, a confidently wrong answer is worse than a crash.
+
+- **Assertion lives on the output, not in a separate `assertions` block.**
+  `OutputSpec.must_equal` holds a template (`"{{inputs.member_id}}"`)
+  rendered at replay time with the same `render_value` the steps use, then
+  compared to what was actually read off the page. Chose this over a
+  general-purpose assertions list (left/right/operator) because the only
+  requirement was "an extracted output must equal an input", and a
+  comparison DSL would have been a second, parallel way to express
+  things the artifact already expresses -- more schema for no additional
+  capability today.
+- **Comparison is trim-then-exact, deliberately not fuzzy.** Normalizing
+  case or stripping punctuation would make the check pass in cases it
+  shouldn't; an identity check that's lenient isn't one. The documented
+  cost: a page rendering `Member #10001` rather than `10001` wouldn't
+  match and would need its own output/locator.
+- **A mismatch aborts before `outputs` is populated**, rather than
+  returning a flag alongside the data. Chose raising over returning
+  because any code path that can hand back a value from the wrong record
+  -- even marked "unverified" -- is one a caller can ignore.
+- **Reused HARD_FAILURE rather than adding a sixth outcome**, per review.
+  It is technically a *recognized* bad state rather than an unrecognized
+  one, but the taxonomy's job is telling a caller what to do, and
+  "never treat this as an answer" is exactly HARD_FAILURE's job.
+- **Added `FailureReason` codes to `ReplayError`** (per review):
+  `identity_mismatch`, `format_invalid`, `element_not_found`, `timeout`,
+  `unrecognized_state`, `step_failed`, `recovery_failed`,
+  `policy_blocked`, `operator_abandoned`. `message` serves a human reading
+  one failure; the code serves everything else -- triage, alerting, and
+  counting failures by kind across tenants. An artifact throwing
+  `element_not_found` at one tenant is drift; one throwing
+  `identity_mismatch` is a correctness emergency, and telling those apart
+  by grepping message strings would be a bad way to find out.
+  Made it a **required** field so every construction site has to classify
+  itself rather than defaulting to a vague catch-all.
+- **Classified failures structurally, not by sniffing error text.** Added
+  `ActionResult.error_kind` ("locator_not_found" / "timeout" /
+  "surface_error"), set by the surface where the exception is actually
+  caught, so the engine maps a *kind* to a reason code instead of
+  pattern-matching prose that could be reworded at any time.
+- **Widened `Surface.act()`'s exception handling while doing it.** It
+  previously caught only `LocatorResolutionError`; a Playwright timeout or
+  a closed-page error escaped `act()` and crashed the whole run instead of
+  becoming a reportable failure. That also meant the `timeout` reason code
+  would have been unreachable in practice. Now broad-caught and tagged,
+  with the exception type kept in the message so nothing is lost.
+- **Partial masking (`***01`) rather than full redaction** in error text,
+  per review. Full redaction of an identifier makes a failure
+  undebuggable -- an operator can't tell which request went wrong --
+  while the full value shouldn't be persisted. Keeping the last two
+  characters lets a human correlate the error with the request they made
+  and leaks almost nothing. One helper (`redact.mask_partial`) so the
+  rule lives in a single place.
+- **Assertion templates are validated in `_validate_params`**, before a
+  browser opens, alongside the existing missing-input/secret checks -- a
+  malformed artifact should fail at the door, not halfway through a run.
+- **Tested against a real fault, not a synthetic mismatch.** Added a
+  `wrong_member` fault to the fake app: it serves a *different* member's
+  detail page with a 200, no redirect, and a page that looks entirely
+  normal. It's the nastiest fault in the set -- every other one is
+  visible. Verified the gap is real before claiming to fix it: with the
+  same fault and the pre-Phase-1 artifact, replay returned
+  `outcome: success` with `member_id: 10002, savings_balance: $8112.02`
+  when 10001 was requested. Notably the artifact was *already extracting*
+  `member_id` -- the data needed to catch this was being read and thrown
+  away, never compared.
+- **Known limit, documented on the field itself**: this only works when
+  the page displays the identifier. A capability whose result page never
+  echoes its input can't prove identity this way and needs a different
+  anchor.

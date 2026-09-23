@@ -104,6 +104,11 @@ class ActionResult(BaseModel):
     blocked: bool = False
     policy_reason: str | None = None
     error: str | None = None
+    error_kind: str | None = None
+    """A coarse classification of `error` ("locator_not_found", "timeout",
+    "surface_error") set by the surface itself, so callers can react to the
+    *kind* of failure without pattern-matching on the message text.
+    """
     resolved_strategy: LocatorStrategy | None = None
     resolved_value: str | None = None
     observation: Observation | None = None
