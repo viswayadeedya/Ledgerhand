@@ -1,0 +1,208 @@
+schema_version: '1.0'
+id: member-savings-lookup
+version: 1
+title: Look up a member's savings balance
+description: Signs in to the teller system, searches for a member by ID, and reads
+  their current savings and checking balance.
+target_domain: 127.0.0.1:5055
+entry_url: http://127.0.0.1:5055/login
+inputs:
+- name: member_id
+  type: string
+  description: The member ID to look up.
+  example: '10001'
+secrets:
+- name: username
+  description: ''
+- name: password
+  description: ''
+outputs:
+- name: member_id
+  type: string
+  description: ''
+  target:
+    frame: main
+    candidates:
+    - strategy: table_position
+      value: row=0,col=1
+      role: null
+- name: member_name
+  type: string
+  description: Member's full name.
+  target:
+    frame: main
+    candidates:
+    - strategy: table_position
+      value: row=1,col=1
+      role: null
+- name: savings_balance
+  type: money
+  description: Current savings balance.
+  target:
+    frame: main
+    candidates:
+    - strategy: table_position
+      value: row=3,col=1
+      role: null
+- name: checking_balance
+  type: money
+  description: Current checking balance.
+  target:
+    frame: main
+    candidates:
+    - strategy: table_position
+      value: row=4,col=1
+      role: null
+steps:
+- type: navigate
+  url: http://127.0.0.1:5055/login
+  method: null
+  description: null
+  target: null
+  point: null
+  value: null
+- type: fill
+  url: null
+  method: null
+  description: null
+  target:
+    frame: null
+    candidates:
+    - strategy: table_position
+      value: row=1,col=1
+      role: null
+    - strategy: css
+      value: table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(3) > td:nth-child(2)
+        > input:nth-child(1)
+      role: null
+  point: null
+  value: '{{secrets.username}}'
+- type: fill
+  url: null
+  method: null
+  description: null
+  target:
+    frame: null
+    candidates:
+    - strategy: table_position
+      value: row=2,col=1
+      role: null
+    - strategy: css
+      value: table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(4) > td:nth-child(2)
+        > input:nth-child(1)
+      role: null
+  point: null
+  value: '{{secrets.password}}'
+- type: click
+  url: null
+  method: null
+  description: null
+  target:
+    frame: null
+    candidates:
+    - strategy: role
+      value: Sign On
+      role: button
+    - strategy: text
+      value: Sign On
+      role: null
+    - strategy: table_position
+      value: row=3,col=0
+      role: null
+    - strategy: css
+      value: table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(5) > td:nth-child(1)
+        > input:nth-child(1)
+      role: null
+  point: null
+  value: null
+- type: fill
+  url: null
+  method: null
+  description: null
+  target:
+    frame: nav
+    candidates:
+    - strategy: table_position
+      value: row=2,col=0
+      role: null
+    - strategy: css
+      value: table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(4) > td:nth-child(1)
+        > input:nth-child(1)
+      role: null
+  point: null
+  value: '{{inputs.member_id}}'
+- type: click
+  url: null
+  method: null
+  description: null
+  target:
+    frame: nav
+    candidates:
+    - strategy: role
+      value: Search
+      role: button
+    - strategy: text
+      value: Search
+      role: null
+    - strategy: table_position
+      value: row=3,col=0
+      role: null
+    - strategy: css
+      value: table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(5) > td:nth-child(1)
+        > input:nth-child(1)
+      role: null
+  point: null
+  value: null
+- type: click
+  url: null
+  method: null
+  description: null
+  target:
+    frame: main
+    candidates:
+    - strategy: role
+      value: View
+      role: link
+    - strategy: text
+      value: View
+      role: null
+    - strategy: table_position
+      value: row=1,col=4
+      role: null
+    - strategy: css
+      value: table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(2) > td:nth-child(5)
+        > a:nth-child(1)
+      role: null
+  point: null
+  value: null
+checkpoint:
+  frame: main
+  candidates:
+  - strategy: text
+    value: Savings Balance
+    role: null
+checkpoint_description: Page shows text matching "Savings Balance".
+business_outcomes:
+- name: member_not_found
+  description: No member exists with the given ID.
+  detect:
+    frame: main
+    candidates:
+    - strategy: text
+      value: No member found
+      role: null
+  requires_human: false
+- name: ambiguous_duplicate
+  description: More than one member record matched; automation should not guess which
+    one.
+  detect:
+    frame: main
+    candidates:
+    - strategy: text
+      value: Multiple members matched
+      role: null
+  requires_human: true
+provenance:
+  discovered_at: '2026-09-22T21:41:40.365683+00:00'
+  discovery_model: claude-sonnet-5
+  source_run_log: evidence/discovery-member-lookup/run_log.json

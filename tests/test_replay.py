@@ -9,6 +9,7 @@ from cua.core.models import Action, ActionType, LocatorCandidate, LocatorStrateg
 from cua.replay.engine import ReplayEngine
 from cua.replay.models import FailureReason, ReplayOutcome
 from tests.conftest import arm_fault as _arm_fault
+from tests.conftest import risky_artifact_for as _risky_artifact_for
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ARTIFACT_PATH = REPO_ROOT / "artifacts" / "member-savings-lookup.yaml"
@@ -106,56 +107,7 @@ def test_replay_blocks_risky_action_and_needs_human_approval(fake_app_server, te
     irreversible action and reports NEEDS_HUMAN with enough detail to act on,
     then proceeds when a human approves it.
     """
-    domain = fake_app_server.replace("http://", "")
-    risky_artifact = CapabilityArtifact(
-        id="risky-test",
-        title="risky test",
-        description="Directly submits the sub-account commit form -- for testing guardrail blocking only.",
-        target_domain=domain,
-        entry_url=f"{fake_app_server}/login",
-        secrets=[{"name": "username"}, {"name": "password"}],
-        steps=[
-            Action(type=ActionType.NAVIGATE, url=f"{fake_app_server}/login"),
-            Action(
-                type=ActionType.FILL,
-                target=Target(candidates=[LocatorCandidate(strategy=LocatorStrategy.CSS, value='input[name="username"]')]),
-                value="{{secrets.username}}",
-            ),
-            Action(
-                type=ActionType.FILL,
-                target=Target(candidates=[LocatorCandidate(strategy=LocatorStrategy.CSS, value='input[name="password"]')]),
-                value="{{secrets.password}}",
-            ),
-            Action(
-                type=ActionType.CLICK,
-                target=Target(candidates=[LocatorCandidate(strategy=LocatorStrategy.ROLE, role="button", value="Sign On")]),
-            ),
-            Action(type=ActionType.NAVIGATE, url=f"{fake_app_server}/app/member/10001/new-subaccount"),
-            Action(
-                type=ActionType.FILL,
-                target=Target(candidates=[LocatorCandidate(strategy=LocatorStrategy.CSS, value="#initial_deposit")]),
-                value="100",
-            ),
-            Action(
-                type=ActionType.CLICK,
-                target=Target(
-                    candidates=[LocatorCandidate(strategy=LocatorStrategy.ROLE, role="button", value="Continue")]
-                ),
-            ),
-            Action(
-                type=ActionType.CLICK,
-                target=Target(
-                    candidates=[
-                        LocatorCandidate(strategy=LocatorStrategy.ROLE, role="button", value="Confirm & Open Account")
-                    ]
-                ),
-            ),
-        ],
-        checkpoint=Target(candidates=[LocatorCandidate(strategy=LocatorStrategy.TEXT, value="opened")]),
-        checkpoint_description="Sub-account opened confirmation is shown.",
-        provenance={"discovered_at": "2026-01-01T00:00:00Z", "discovery_model": "manual-test"},
-    )
-
+    risky_artifact = _risky_artifact_for(fake_app_server)
     engine = ReplayEngine(policy=test_policy, headless=True, evidence_dir=tmp_path)
 
     blocked = engine.run(risky_artifact, secrets=SECRETS, human_approved=False)

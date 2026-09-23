@@ -1,0 +1,22 @@
+# Arm the fault (fire-once, so it is re-armed before each run):
+$ curl -X POST http://127.0.0.1:5055/admin/faults/api \
+    -H "Content-Type: application/json" \
+    -d '{"fault": "extra_row", "armed": true}'
+
+$ python -m cua.replay --artifact evidence/extra_row/position-only.yaml \
+    --input member_id=10001 \
+    --secret username=teller1 --secret password=teller123 \
+    --out evidence/extra_row/position-only.result.json
+
+Outcome: success
+Steps executed: 7/7
+Outputs: {
+  "member_id": "10001",
+  "member_name": "Maria Garcia",
+  "savings_balance": "2019-03-14",
+  "checking_balance": "$2340.18"
+}
+Result written to evidence\extra_row\position-only.result.json
+
+$ echo $?
+0

@@ -109,6 +109,17 @@ Try a different member (`member_id=10002`) to see it read different, real
 data live -- not a cached answer. Try a nonexistent one (`member_id=99999`)
 to see a clean `business_outcome` instead of a crash.
 
+The CLI exits with a code a caller can branch on, so an orchestrator
+doesn't have to parse stdout to know what happened:
+
+| exit | outcome | what a caller should do |
+|---|---|---|
+| `0` | `success`, `recovered` | take the outputs |
+| `1` | `hard_failure` | something is wrong -- alert, don't retry blindly |
+| `2` | `business_outcome` | the app answered, and the answer was "no" -- retrying won't change it |
+| `3` | `needs_human` | route to a person |
+| `64` | -- | bad command line, or a missing `--input`/`--secret` (kept off `2` so it can't be read as a business outcome) |
+
 **5. Trigger a recoverable runtime fault** and watch replay handle it:
 ```powershell
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:5055/admin/faults/api" `

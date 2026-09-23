@@ -1,0 +1,26 @@
+{
+  "recorded_at": "2026-09-23T15:02:56.445180+00:00",
+  "artifact_id": "member-savings-lookup",
+  "artifact_version": 1,
+  "inputs": {
+    "member_id": "10001"
+  },
+  "result": {
+    "outcome": "hard_failure",
+    "capability_id": "member-savings-lookup",
+    "outputs": {},
+    "sensitive_outputs": [],
+    "business_outcome": null,
+    "business_outcome_description": null,
+    "recovery_events": [],
+    "escalations": [],
+    "error": {
+      "reason_code": "format_invalid",
+      "step_index": null,
+      "expected": "output 'savings_balance' to look like money",
+      "observed": "'2019-03-14'",
+      "message": "Output 'savings_balance' was read as '2019-03-14', which does not look like money. Refusing to return it -- the locator resolved, but to something that isn't the value it claims to be."
+    },
+    "steps_executed": 7
+  }
+}

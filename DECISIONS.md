@@ -868,3 +868,49 @@ one extra row in it silently returns the wrong value.
   `checking_balance` -- a wrong answer that looks entirely plausible.
   A third test shows the declared `money` type catching that same shifted
   value as a second, independent layer.
+
+### Phase 2 follow-up: ambiguity, exit codes, and a frozen comparison
+
+- **An ambiguous label was silently answering with the first row.** The
+  requested "label matches two rows" test found a real bug rather than
+  confirming existing behaviour: `row.locator("td, th")` on a multi-row
+  match flattens every row's cells into one list, so `.nth(col)` returned
+  row 1's cell and `resolve()` counted exactly one element and accepted
+  it. `build_locator` now returns the row match itself when it isn't
+  unique, so `resolve()` sees the true count and refuses. Chose that over
+  raising inside `build_locator` because it keeps every "how many matched"
+  decision in one place -- `resolve()` -- instead of splitting the
+  exactly-one rule across two functions.
+- **Failures name the locator, and say zero vs. many.** "matched nothing"
+  (the page changed) and "ambiguous: matched N elements" (the locator
+  stopped being unique) arrive identically and need opposite fixes.
+  `_extract_text` now returns the resolver's account of why instead of
+  discarding it, so an extraction HARD_FAILURE says *which* label went
+  wrong rather than "not found".
+- **Three extra_row tests collapsed into one.** The contrast between the
+  three artifacts *is* the claim; as separate tests one could be deleted
+  without the others noticing, and the comparison was only visible to
+  someone who read all three.
+- **Process exit codes: 0 success/recovered, 1 hard failure, 2 business
+  outcome, 3 needs human.** So an orchestrator can branch without parsing
+  stdout. The distinction that matters: a caller retrying on any nonzero
+  exit would retry "no such member" forever, when nothing is broken and
+  the answer will never change. `recovered` shares `0` with `success`
+  because it *worked* -- needing a retry is detail, not failure.
+- **Bad command lines moved to `64` (`EX_USAGE`).** argparse exits `2` by
+  default, which would have been indistinguishable from a business
+  outcome. Chose to override argparse rather than renumber the outcomes,
+  since the outcome codes are the contract callers depend on.
+- **CLI exit codes tested through a real subprocess**, not by calling
+  `main()` and checking its return value -- the latter would pass even if
+  nothing ever handed it to `sys.exit()`. A separate test asserts every
+  `ReplayOutcome` has a code, so adding an outcome can't reach the CLI and
+  raise `KeyError` at the end of an otherwise-successful run.
+- **`evidence/extra_row/` freezes its own artifacts** rather than pointing
+  at `artifacts/member-savings-lookup.yaml`. That file is being
+  regenerated in this same hardening pass; referencing it would quietly
+  turn the three-way comparison into three identical runs. The frozen
+  artifacts deliberately don't mark the balances `sensitive`, because the
+  comparison's entire content is the values -- masked to `***14` and
+  `***18`, "a date landed in a money field" becomes invisible. Real
+  capability runs under `evidence/runs/` stay masked.

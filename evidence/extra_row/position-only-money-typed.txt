@@ -1,0 +1,20 @@
+# Arm the fault (fire-once, so it is re-armed before each run):
+$ curl -X POST http://127.0.0.1:5055/admin/faults/api \
+    -H "Content-Type: application/json" \
+    -d '{"fault": "extra_row", "armed": true}'
+
+$ python -m cua.replay --artifact evidence/extra_row/position-only-money-typed.yaml \
+    --input member_id=10001 \
+    --secret username=teller1 --secret password=teller123 \
+    --out evidence/extra_row/position-only-money-typed.result.json
+
+Outcome: hard_failure
+Steps executed: 7/7
+Failure   : format_invalid (after all steps)
+  expected: output 'savings_balance' to look like money
+  observed: '2019-03-14'
+  detail  : Output 'savings_balance' was read as '2019-03-14', which does not look like money. Refusing to return it -- the locator resolved, but to something that isn't the value it claims to be.
+Result written to evidence\extra_row\position-only-money-typed.result.json
+
+$ echo $?
+1

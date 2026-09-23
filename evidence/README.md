@@ -13,6 +13,7 @@ command(s) used and what to look for.
 | [`discovery-member-lookup/`](discovery-member-lookup/) | 4 | The **required** genuine LLM-driven run: `claude-sonnet-5`, via the `browser_toolset_20260801`, actually drives the browser through login → search → read balance. Full structured step log (`run_log.json`) plus screenshots. |
 | [`replay-member-lookup/`](replay-member-lookup/) | 6 | Deterministic replay of the saved artifact, no LLM: a clean **success**, a **business outcome** (member not found), and a **recovered** run (an injected popup dismissed automatically). |
 | [`handoff-ambiguous-duplicate/`](handoff-ambiguous-duplicate/) | 7 | Human escalation on a genuinely ambiguous result (two conflicting records): one run where the operator **abandons**, one where the operator **takes over the same live session** and resolves it, after which replay reads the correct member's real data. |
+| [`extra_row/`](extra_row/) | hardening | Three replays of the **same page** with one extra row inserted, differing only in the artifact: position-only locators return `outcome: success` with a **date in the savings balance**; label-anchored locators return the right figure; a declared `money` type catches the same shifted value as a second layer. |
 
 The capability artifact itself lives at
 [`/artifacts/member-savings-lookup.yaml`](../artifacts/member-savings-lookup.yaml)

@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from cua.artifacts.schema import CapabilityArtifact
+from cua.core.models import Action, ActionType, LocatorCandidate, LocatorStrategy, Target
 from cua.guardrails.policy import PolicyConfig, PolicyEngine
 from cua.surface.playwright_surface import PlaywrightSurface
 
@@ -58,6 +60,61 @@ def arm_fault(base_url: str, fault: str, armed: bool) -> None:
         method="POST",
     )
     urllib.request.urlopen(req)
+
+
+def risky_artifact_for(base_url: str) -> "CapabilityArtifact":
+    """A small synthetic artifact pointed straight at the sub-account commit
+    route. Not the member-lookup capability -- its only job is to reach an
+    irreversible action so guardrail blocking can be exercised. Shared so
+    the engine test and the CLI exit-code test provoke NEEDS_HUMAN the same
+    way rather than drifting apart.
+    """
+    return CapabilityArtifact(
+        id="risky-test",
+        title="risky test",
+        description="Directly submits the sub-account commit form -- for testing guardrail blocking only.",
+        target_domain=base_url.replace("http://", ""),
+        entry_url=f"{base_url}/login",
+        secrets=[{"name": "username"}, {"name": "password"}],
+        steps=[
+            Action(type=ActionType.NAVIGATE, url=f"{base_url}/login"),
+            Action(
+                type=ActionType.FILL,
+                target=Target(candidates=[LocatorCandidate(strategy=LocatorStrategy.CSS, value='input[name="username"]')]),
+                value="{{secrets.username}}",
+            ),
+            Action(
+                type=ActionType.FILL,
+                target=Target(candidates=[LocatorCandidate(strategy=LocatorStrategy.CSS, value='input[name="password"]')]),
+                value="{{secrets.password}}",
+            ),
+            Action(
+                type=ActionType.CLICK,
+                target=Target(candidates=[LocatorCandidate(strategy=LocatorStrategy.ROLE, role="button", value="Sign On")]),
+            ),
+            Action(type=ActionType.NAVIGATE, url=f"{base_url}/app/member/10001/new-subaccount"),
+            Action(
+                type=ActionType.FILL,
+                target=Target(candidates=[LocatorCandidate(strategy=LocatorStrategy.CSS, value="#initial_deposit")]),
+                value="100",
+            ),
+            Action(
+                type=ActionType.CLICK,
+                target=Target(candidates=[LocatorCandidate(strategy=LocatorStrategy.ROLE, role="button", value="Continue")]),
+            ),
+            Action(
+                type=ActionType.CLICK,
+                target=Target(
+                    candidates=[
+                        LocatorCandidate(strategy=LocatorStrategy.ROLE, role="button", value="Confirm & Open Account")
+                    ]
+                ),
+            ),
+        ],
+        checkpoint=Target(candidates=[LocatorCandidate(strategy=LocatorStrategy.TEXT, value="opened")]),
+        checkpoint_description="Sub-account opened confirmation is shown.",
+        provenance={"discovered_at": "2026-01-01T00:00:00Z", "discovery_model": "manual-test"},
+    )
 
 
 @pytest.fixture
