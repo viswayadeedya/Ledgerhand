@@ -318,7 +318,7 @@ class ReplayEngine:
             # check the values look like what they claim to be.
             outputs: dict[str, str] = {}
             for spec in ctx.artifact.outputs:
-                value = _extract_text(ctx.surface, spec.target)
+                value, why_not = _extract_text(ctx.surface, spec.target)
                 if value is None:
                     raise _ReplayEnd(
                         ReplayResult(
@@ -327,8 +327,8 @@ class ReplayEngine:
                             error=ReplayError(
                                 reason_code=FailureReason.ELEMENT_NOT_FOUND,
                                 step_index=None,
-                                expected=f"output '{spec.name}' locator to resolve",
-                                observed="not found",
+                                expected=f"output '{spec.name}' locator to resolve to exactly one element",
+                                observed=why_not or "element resolved but had no text",
                                 message=f"Checkpoint matched but output '{spec.name}' could not be extracted.",
                             ),
                         )
@@ -529,14 +529,25 @@ def _target_resolves(surface: PlaywrightSurface, target: Target, timeout_ms: int
         return False
 
 
-def _extract_text(surface: PlaywrightSurface, target: Target, timeout_ms: int = 3000) -> str | None:
+def _extract_text(
+    surface: PlaywrightSurface, target: Target, timeout_ms: int = 3000
+) -> tuple[str | None, str | None]:
+    """Returns (value, why_not).
+
+    `why_not` carries the resolver's own account of what it tried and how
+    many elements each attempt matched. Swallowing that and reporting a
+    bare "not found" would hide the difference between the two failures
+    that look identical from here and need opposite fixes: a label that
+    matched *nothing* (the page changed) and a label that matched *two*
+    rows (the label isn't unique any more).
+    """
     try:
         scope = surface.scope_for(target.frame)
         locator, _candidate = resolve_with_wait(scope, target.candidates, timeout_ms=timeout_ms)
-    except LocatorResolutionError:
-        return None
+    except LocatorResolutionError as exc:
+        return None, str(exc)
     text = locator.inner_text()
-    return text.strip() if text else None
+    return (text.strip() if text else None), None
 
 
 def _describe_action(action: Action) -> str:

@@ -27,6 +27,15 @@ def build_locator(scope, candidate: LocatorCandidate):
         # only one happens to contain the substring is the worse failure,
         # and exactness rules it out up front.
         row = scope.locator("tr").filter(has=scope.get_by_text(label, exact=True))
+        if row.count() != 1:
+            # Guard, not an optimization. `row.locator("td, th")` on a
+            # multi-row match flattens every row's cells into ONE list, so
+            # .nth(col) would return the first row's cell and resolve() would
+            # count exactly one element and accept it -- silently answering
+            # with row 1 when the label was ambiguous. Hand back the row
+            # match itself so resolve() sees the true count (0 or N) and
+            # refuses.
+            return row
         return _cell_or_its_control(row.locator("td, th").nth(col))
     if candidate.strategy == LocatorStrategy.TABLE_POSITION:
         row, col = _parse_table_position(candidate.value)
@@ -81,7 +90,13 @@ def resolve(scope, candidates: list[LocatorCandidate]):
             continue
         if count == 1:
             return locator, candidate
-        attempts.append(f"{candidate.strategy.value}={candidate.value!r} -> {count} matches")
+        # Spell out zero vs. many. They arrive here identically but mean
+        # opposite things: nothing matched = the page changed; several
+        # matched = the locator stopped being unique. Each candidate's own
+        # value is kept in the message so the failure names the label (or
+        # role, or selector) that went wrong, not just the step.
+        why = "matched nothing" if count == 0 else f"ambiguous: matched {count} elements"
+        attempts.append(f"{candidate.strategy.value}={candidate.value!r} -> {why}")
     raise LocatorResolutionError(
         "no candidate resolved to exactly one element: " + "; ".join(attempts)
     )

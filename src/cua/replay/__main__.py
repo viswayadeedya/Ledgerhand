@@ -70,9 +70,11 @@ def main() -> None:
     if result.business_outcome:
         print(f"Business outcome: {result.business_outcome} -- {result.business_outcome_description}")
     if result.error:
-        print(f"Error at step {result.error.step_index}: {result.error.message}")
+        where = "step " + str(result.error.step_index) if result.error.step_index is not None else "after all steps"
+        print(f"Failure   : {result.error.reason_code.value} ({where})")
         print(f"  expected: {result.error.expected}")
         print(f"  observed: {result.error.observed}")
+        print(f"  detail  : {result.error.message}")
 
     if args.out:
         payload = {

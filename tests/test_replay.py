@@ -230,44 +230,84 @@ def _with_money_types(artifact: CapabilityArtifact) -> CapabilityArtifact:
     return artifact.model_copy(update={"outputs": outputs})
 
 
-def test_label_anchored_output_survives_an_inserted_row(engine, artifact, fake_app_server):
-    """A tenant's version of the same page with one extra row in it. The
-    label still says what it says, so the value still reads correctly.
+def test_extra_row_label_anchored_vs_position_only(engine, artifact, fake_app_server):
+    """The same page, the same inserted row, three artifacts -- side by side.
+
+    This is deliberately one test rather than three, because the contrast
+    IS the claim. Read as a table:
+
+        artifact                outcome        savings_balance   reason
+        ----------------------  -------------  ----------------  --------------
+        label-anchored          SUCCESS        $2340.18          -
+        position-only           SUCCESS        2019-03-14 (!)    -
+        position-only + money   HARD_FAILURE   (none)            format_invalid
+
+    Row 2 is the bug: no error, a plausible-looking string, and the wrong
+    answer -- savings' money has slid down into checking_balance. Row 1 is
+    the fix, row 3 the net under it.
     """
-    _arm_fault(fake_app_server, "extra_row", True)
-    result = engine.run(_with_label_anchors(artifact), inputs={"member_id": "10001"}, secrets=SECRETS)
 
-    assert result.outcome == ReplayOutcome.SUCCESS
-    assert result.outputs["savings_balance"] == "$2340.18"
-    assert result.outputs["checking_balance"] == "$512.44"
+    def run(variant):
+        _arm_fault(fake_app_server, "extra_row", True)  # fire-once, so re-arm per run
+        return engine.run(variant, inputs={"member_id": "10001"}, secrets=SECRETS)
+
+    def summarize(result):
+        return (
+            result.outcome,
+            result.outputs.get("savings_balance"),
+            result.outputs.get("checking_balance"),
+            result.error.reason_code if result.error else None,
+        )
+
+    anchored = run(_with_label_anchors(artifact))
+    position_only = run(artifact)
+    position_only_typed = run(_with_money_types(artifact))
+
+    assert summarize(anchored) == (ReplayOutcome.SUCCESS, "$2340.18", "$512.44", None)
+    assert summarize(position_only) == (ReplayOutcome.SUCCESS, "2019-03-14", "$2340.18", None)
+    assert summarize(position_only_typed) == (
+        ReplayOutcome.HARD_FAILURE,
+        None,  # nothing is returned, not even the outputs that were fine
+        None,
+        FailureReason.FORMAT_INVALID,
+    )
+    assert "savings_balance" in position_only_typed.error.message
 
 
-def test_position_only_output_silently_reads_the_wrong_cell(engine, artifact, fake_app_server):
-    """The failure the label anchor exists to prevent, demonstrated: with
-    the same inserted row, position-only locators still resolve, still
-    return strings, and are quietly wrong -- the date lands in
-    savings_balance and savings' money lands in checking_balance, which
-    would look entirely plausible to whoever received it.
+def test_unresolvable_output_label_is_named_in_the_failure(engine, artifact):
+    """The locator layer already refuses an ambiguous or missing label (see
+    test_locator.py). What matters here is that its account of WHY survives
+    the trip out to the caller: "could not be extracted" alone would leave
+    a human unable to tell a renamed label from a duplicated one.
     """
-    _arm_fault(fake_app_server, "extra_row", True)
-    result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
-
-    assert result.outcome == ReplayOutcome.SUCCESS  # no error raised at all
-    assert result.outputs["savings_balance"] == "2019-03-14"
-    assert result.outputs["checking_balance"] == "$2340.18"
-
-
-def test_declared_money_type_catches_the_shifted_value(engine, artifact, fake_app_server):
-    """Second layer: even position-only, a declared type turns that silent
-    wrong answer into a loud refusal.
-    """
-    _arm_fault(fake_app_server, "extra_row", True)
-    result = engine.run(_with_money_types(artifact), inputs={"member_id": "10001"}, secrets=SECRETS)
+    outputs = [
+        spec.model_copy(
+            update={
+                "target": spec.target.model_copy(
+                    update={
+                        "candidates": [
+                            LocatorCandidate(
+                                strategy=LocatorStrategy.TABLE_LABEL, value="label=Renamed Balance,col=1"
+                            )
+                        ]
+                    }
+                )
+            }
+        )
+        if spec.name == "savings_balance"
+        else spec
+        for spec in artifact.outputs
+    ]
+    result = engine.run(
+        artifact.model_copy(update={"outputs": outputs}), inputs={"member_id": "10001"}, secrets=SECRETS
+    )
 
     assert result.outcome == ReplayOutcome.HARD_FAILURE
-    assert result.error.reason_code == FailureReason.FORMAT_INVALID
+    assert result.error.reason_code == FailureReason.ELEMENT_NOT_FOUND
+    assert "savings_balance" in result.error.message  # which output
+    assert "Renamed Balance" in result.error.observed  # which label
+    assert "matched nothing" in result.error.observed  # and whether it was zero or several
     assert result.outputs == {}
-    assert "savings_balance" in result.error.message
 
 
 def test_money_type_accepts_a_real_balance(engine, artifact):

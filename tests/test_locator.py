@@ -17,6 +17,10 @@ SAMPLE_HTML = """
 <tr><td>Savings Balance</td><td>$10.00</td></tr>
 <tr><td>Balance</td><td>$20.00</td></tr>
 </table>
+<table>
+<tr><td>Fee</td><td>$1.00</td></tr>
+<tr><td>Fee</td><td>$2.00</td></tr>
+</table>
 </body></html>
 """
 
@@ -76,8 +80,25 @@ def test_table_label_matches_the_label_exactly_not_as_a_substring(page):
 
 
 def test_table_label_rejects_a_label_that_is_not_there(page):
-    with pytest.raises(LocatorResolutionError):
+    with pytest.raises(LocatorResolutionError) as exc:
         resolve(page, [LocatorCandidate(strategy=LocatorStrategy.TABLE_LABEL, value="label=Nope,col=1")])
+    assert "Nope" in str(exc.value)
+    assert "matched nothing" in str(exc.value)
+
+
+def test_table_label_matching_two_rows_fails_and_names_the_ambiguous_label(page):
+    """Two rows labelled "Fee" -- there is no right answer, so there must be
+    no answer. And the failure has to say WHICH label went ambiguous: with
+    several outputs on a page, "ambiguous locator" alone doesn't tell you
+    which row to go look at.
+    """
+    with pytest.raises(LocatorResolutionError) as exc:
+        resolve(page, [LocatorCandidate(strategy=LocatorStrategy.TABLE_LABEL, value="label=Fee,col=1")])
+
+    message = str(exc.value)
+    assert "Fee" in message  # names the offending label, not just "a locator"
+    assert "ambiguous: matched 2 elements" in message  # and says it was too many, not too few
+    assert "$1.00" not in message and "$2.00" not in message  # never guessed at one
 
 
 def test_css_fallback_resolves(page):
