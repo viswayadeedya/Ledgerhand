@@ -22,6 +22,12 @@ class FaultState:
     detectable by checking that the record on screen is the record that was
     asked for.
     """
+    extra_row: bool = False
+    """Inserts an extra row above the balances on the member detail page --
+    a stand-in for the benign, extremely common way a tenant's version of
+    the same vendor product differs. Harmless to a human reading the page;
+    silently fatal to a locator that finds values by row number.
+    """
 
     def as_dict(self) -> dict[str, bool]:
         return {f.name: getattr(self, f.name) for f in fields(self)}

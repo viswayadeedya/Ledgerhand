@@ -18,18 +18,32 @@ def build_locator(scope, candidate: LocatorCandidate):
         return scope.get_by_label(candidate.value)
     if candidate.strategy == LocatorStrategy.TEXT:
         return scope.get_by_text(candidate.value)
+    if candidate.strategy == LocatorStrategy.TABLE_LABEL:
+        label, col = _parse_table_label(candidate.value)
+        # exact=True, not a substring match: "Balance" must not match a row
+        # labelled "Savings Balance". A label that's merely *contained* in
+        # two rows would resolve to two cells, and resolve()'s exactly-one
+        # rule would reject it -- but silently matching the wrong row when
+        # only one happens to contain the substring is the worse failure,
+        # and exactness rules it out up front.
+        row = scope.locator("tr").filter(has=scope.get_by_text(label, exact=True))
+        return _cell_or_its_control(row.locator("td, th").nth(col))
     if candidate.strategy == LocatorStrategy.TABLE_POSITION:
         row, col = _parse_table_position(candidate.value)
-        cell = scope.locator("table tr").nth(row).locator("td, th").nth(col)
-        # The cell itself is rarely what we want to click/fill -- if it has
-        # exactly one interactive descendant, target that instead.
-        interactive = cell.locator("input, select, textarea, button, a")
-        if interactive.count() == 1:
-            return interactive
-        return cell
+        return _cell_or_its_control(scope.locator("table tr").nth(row).locator("td, th").nth(col))
     if candidate.strategy == LocatorStrategy.CSS:
         return scope.locator(candidate.value)
     raise ValueError(f"unknown locator strategy: {candidate.strategy}")
+
+
+def _cell_or_its_control(cell):
+    """The cell itself is rarely what we want to click or fill -- if it
+    holds exactly one interactive element, target that instead.
+    """
+    interactive = cell.locator("input, select, textarea, button, a")
+    if interactive.count() == 1:
+        return interactive
+    return cell
 
 
 def _parse_table_position(value: str) -> tuple[int, int]:
@@ -37,6 +51,15 @@ def _parse_table_position(value: str) -> tuple[int, int]:
     if not m:
         raise ValueError(f"malformed table_position value: {value!r}")
     return int(m.group(1)), int(m.group(2))
+
+
+def _parse_table_label(value: str) -> tuple[str, int]:
+    # Greedy on the label so a label containing ",col=" still parses -- the
+    # real separator is the LAST one.
+    m = re.match(r"^label=(.*),col=(\d+)$", value)
+    if not m:
+        raise ValueError(f"malformed table_label value: {value!r} (expected 'label=<text>,col=<n>')")
+    return m.group(1).strip(), int(m.group(2))
 
 
 def resolve(scope, candidates: list[LocatorCandidate]):

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from cua.artifacts.schema import CapabilityArtifact, OutputSpec, Target
+from cua.artifacts.schema import CapabilityArtifact, OutputSpec, Target, format_error
 from cua.core.models import Action, ActionResult, ActionType
 from cua.guardrails.policy import PolicyEngine
 from cua.guardrails.redact import mask_partial
@@ -312,6 +312,10 @@ class ReplayEngine:
     def _resolve_ending(self, ctx: _RunContext) -> ReplayResult:
         self._dismiss_pending_dialog(ctx, len(ctx.rendered_steps) - 1)  # defensive: don't resolve against a blocked page
         if _target_resolves(ctx.surface, ctx.artifact.checkpoint):
+            # Three passes rather than one, so the order outputs happen to
+            # be declared in can't decide which problem gets reported: read
+            # everything, then check we're on the right record at all, then
+            # check the values look like what they claim to be.
             outputs: dict[str, str] = {}
             for spec in ctx.artifact.outputs:
                 value = _extract_text(ctx.surface, spec.target)
@@ -329,8 +333,13 @@ class ReplayEngine:
                             ),
                         )
                     )
-                self._assert_identity(ctx, spec, value)
                 outputs[spec.name] = value
+
+            for spec in ctx.artifact.outputs:
+                self._assert_identity(ctx, spec, outputs[spec.name])
+            for spec in ctx.artifact.outputs:
+                self._validate_format(ctx, spec, outputs[spec.name])
+
             needed_help = ctx.recovery_events or ctx.escalations
             outcome = ReplayOutcome.RECOVERED if needed_help else ReplayOutcome.SUCCESS
             return ReplayResult(
@@ -386,6 +395,36 @@ class ReplayEngine:
                         f"Identity check failed after {len(ctx.rendered_steps)} steps: the page's "
                         f"'{spec.name}' is {shown_observed!r}, but this run asked for {shown_expected!r}. "
                         f"Refusing to return data that may belong to a different record."
+                    ),
+                ),
+            )
+        )
+
+    def _validate_format(self, ctx: _RunContext, spec: OutputSpec, value: str) -> None:
+        """Checks a value looks like what the artifact says it is.
+
+        Catches the failure a positional locator makes possible: when a
+        page grows a row, the locator still resolves and still returns a
+        string -- just the wrong one. A date where a balance belongs is
+        obvious to a type check and invisible to every other check we have.
+        """
+        problem = format_error(spec.type, value)
+        if problem is None:
+            return
+        shown = mask_partial(value) if spec.sensitive else value
+        raise _ReplayEnd(
+            ReplayResult(
+                outcome=ReplayOutcome.HARD_FAILURE,
+                capability_id=ctx.artifact.id,
+                error=ReplayError(
+                    reason_code=FailureReason.FORMAT_INVALID,
+                    step_index=None,
+                    expected=f"output '{spec.name}' to look like {spec.type.value}",
+                    observed=f"{shown!r}",
+                    message=(
+                        f"Output '{spec.name}' was read as {shown!r}, which does not look like "
+                        f"{spec.type.value}. Refusing to return it -- the locator resolved, but to "
+                        f"something that isn't the value it claims to be."
                     ),
                 ),
             )

@@ -30,6 +30,12 @@ class LocatorStrategy(str, Enum):
     ROLE = "role"
     LABEL = "label"
     TEXT = "text"
+    TABLE_LABEL = "table_label"
+    """Find the row whose label cell reads exactly X, then take cell N of
+    that row. Ranked above TABLE_POSITION because it's anchored to what the
+    row *says* rather than where it sits: inserting a row above it moves
+    the position but not the label.
+    """
     TABLE_POSITION = "table_position"
     CSS = "css"
 

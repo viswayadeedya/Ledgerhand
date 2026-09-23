@@ -4,7 +4,7 @@ from urllib.parse import urlsplit, urlunsplit
 import pytest
 import yaml
 
-from cua.artifacts.schema import CapabilityArtifact
+from cua.artifacts.schema import CapabilityArtifact, OutputType
 from cua.core.models import Action, ActionType, LocatorCandidate, LocatorStrategy, Target
 from cua.replay.engine import ReplayEngine
 from cua.replay.models import FailureReason, ReplayOutcome
@@ -191,6 +191,90 @@ def test_replay_hard_failure_has_debuggable_detail(engine, artifact):
     assert result.error is not None
     assert result.error.step_index == 1
     assert "This Button Does Not Exist" in result.error.expected
+
+
+# What the fake app's member-detail table labels each value with. Used to
+# build the label-anchored artifact these tests exercise, before Phase 4
+# bakes the same anchors into the committed one.
+_OUTPUT_LABELS = {
+    "member_id": "Member ID",
+    "member_name": "Name",
+    "savings_balance": "Savings Balance",
+    "checking_balance": "Checking Balance",
+}
+
+
+def _with_label_anchors(artifact: CapabilityArtifact, *, money_typed: bool = False) -> CapabilityArtifact:
+    outputs = []
+    for spec in artifact.outputs:
+        label = _OUTPUT_LABELS.get(spec.name)
+        candidates = list(spec.target.candidates)
+        if label:
+            col = candidates[0].value.split("col=")[-1]
+            candidates = [
+                LocatorCandidate(strategy=LocatorStrategy.TABLE_LABEL, value=f"label={label},col={col}"),
+                *candidates,
+            ]
+        update = {"target": spec.target.model_copy(update={"candidates": candidates})}
+        if money_typed and spec.name.endswith("_balance"):
+            update["type"] = OutputType.MONEY
+        outputs.append(spec.model_copy(update=update))
+    return artifact.model_copy(update={"outputs": outputs})
+
+
+def _with_money_types(artifact: CapabilityArtifact) -> CapabilityArtifact:
+    outputs = [
+        spec.model_copy(update={"type": OutputType.MONEY}) if spec.name.endswith("_balance") else spec
+        for spec in artifact.outputs
+    ]
+    return artifact.model_copy(update={"outputs": outputs})
+
+
+def test_label_anchored_output_survives_an_inserted_row(engine, artifact, fake_app_server):
+    """A tenant's version of the same page with one extra row in it. The
+    label still says what it says, so the value still reads correctly.
+    """
+    _arm_fault(fake_app_server, "extra_row", True)
+    result = engine.run(_with_label_anchors(artifact), inputs={"member_id": "10001"}, secrets=SECRETS)
+
+    assert result.outcome == ReplayOutcome.SUCCESS
+    assert result.outputs["savings_balance"] == "$2340.18"
+    assert result.outputs["checking_balance"] == "$512.44"
+
+
+def test_position_only_output_silently_reads_the_wrong_cell(engine, artifact, fake_app_server):
+    """The failure the label anchor exists to prevent, demonstrated: with
+    the same inserted row, position-only locators still resolve, still
+    return strings, and are quietly wrong -- the date lands in
+    savings_balance and savings' money lands in checking_balance, which
+    would look entirely plausible to whoever received it.
+    """
+    _arm_fault(fake_app_server, "extra_row", True)
+    result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
+
+    assert result.outcome == ReplayOutcome.SUCCESS  # no error raised at all
+    assert result.outputs["savings_balance"] == "2019-03-14"
+    assert result.outputs["checking_balance"] == "$2340.18"
+
+
+def test_declared_money_type_catches_the_shifted_value(engine, artifact, fake_app_server):
+    """Second layer: even position-only, a declared type turns that silent
+    wrong answer into a loud refusal.
+    """
+    _arm_fault(fake_app_server, "extra_row", True)
+    result = engine.run(_with_money_types(artifact), inputs={"member_id": "10001"}, secrets=SECRETS)
+
+    assert result.outcome == ReplayOutcome.HARD_FAILURE
+    assert result.error.reason_code == FailureReason.FORMAT_INVALID
+    assert result.outputs == {}
+    assert "savings_balance" in result.error.message
+
+
+def test_money_type_accepts_a_real_balance(engine, artifact):
+    """The type check must not cry wolf on the normal path."""
+    result = engine.run(_with_money_types(artifact), inputs={"member_id": "10001"}, secrets=SECRETS)
+    assert result.outcome == ReplayOutcome.SUCCESS
+    assert result.outputs["savings_balance"] == "$2340.18"
 
 
 def test_identity_assertion_passes_on_the_right_record(engine, artifact):

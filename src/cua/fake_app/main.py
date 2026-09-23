@@ -156,13 +156,14 @@ def member_detail(request: Request, member_id: int):
         )
         if other is not None:
             member = other
+    extra_row = FAULTS.consume("extra_row")
     if member["status"] == "closed":
         return templates.TemplateResponse(
-            request, "member_detail.html", {"member": member, "popup": False}
+            request, "member_detail.html", {"member": member, "popup": False, "extra_row": extra_row}
         )
     popup = FAULTS.consume("popup")
     return templates.TemplateResponse(
-        request, "member_detail.html", {"member": member, "popup": popup}
+        request, "member_detail.html", {"member": member, "popup": popup, "extra_row": extra_row}
     )
 
 

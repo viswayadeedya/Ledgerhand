@@ -810,3 +810,61 @@ money. In banking, a confidently wrong answer is worse than a crash.
   the page displays the identifier. A capability whose result page never
   echoes its input can't prove identity this way and needs a different
   anchor.
+
+## Post-review hardening — Phase 2: anchor outputs to labels, not positions
+
+Review feedback: every output was located by table position alone
+(`savings = row=3,col=1`). A tenant's version of the same vendor page with
+one extra row in it silently returns the wrong value.
+
+- **New `TABLE_LABEL` strategy, ranked above `TABLE_POSITION`.** Stored as
+  `label=Savings Balance,col=1` -- "the row whose label cell reads exactly
+  this, then cell N of that row". Chose a readable key=value string over an
+  XPath (`following-sibling::td[1]`) because the artifact's whole point is
+  being reviewable by a human, and an XPath in YAML is neither reviewable
+  nor tag-agnostic (`td` vs `th`).
+- **Exact label match, not substring**, per review. `get_by_text(label,
+  exact=True)`: "Balance" must not match a row labelled "Savings Balance".
+  Substring matching fails two ways -- it resolves two rows (loud, fine) or
+  quietly picks the wrong one when only one row happens to contain the
+  substring (silent, not fine). Exactness removes the second case entirely.
+  Parser is greedy on the label so a label containing ",col=" still splits
+  on the real separator.
+- **The label comes from the captured observation, not from anyone typing
+  it.** The recorder looks for the cell at (same frame, same row, col-1)
+  and uses its text; no label cell there means no anchor and the locator
+  falls back to position alone, rather than inventing one.
+- **`TABLE_POSITION` kept as the fallback rather than replaced.** The two
+  fail in different directions -- a renamed label breaks the anchor, an
+  inserted row breaks the position -- so keeping both covers more real
+  drift than either alone. This is the same ranked-candidate idea the
+  steps already use, applied to outputs for the first time.
+- **Format validation folded into `type` rather than a separate `format`
+  field.** The review asked for both "optional format validation" and
+  "balances get a money type"; making `type: money` *carry* its own
+  pattern means one concept in the YAML instead of two that could
+  disagree. `string` stays permissive, `money` and `integer` validate, and
+  a value failing its type is HARD_FAILURE (`format_invalid`) and never
+  returned. Made `OutputType` a proper enum so an unknown type fails at
+  load rather than silently skipping validation.
+- **Deliberately loose about presentation, strict about shape**: money
+  accepts a leading `$` and thousands commas but requires exactly two
+  decimals. Parenthesised negatives ("($5.00)") are *not* covered and
+  documented as such -- a pattern loose enough for those is loose enough
+  to let a date through, which is exactly the thing this is for.
+- **Ending resolution restructured into three passes** (read everything →
+  assert identity → validate shape). Previously one loop did all three per
+  output, which meant the order outputs happened to be declared in decided
+  which problem got reported. Identity now always reports before shape:
+  "you're on the wrong record" is a more useful diagnosis than "that
+  balance looks like a date" when both are true.
+- **Tested with `extra_row`, a deliberately *benign* fault.** The other
+  faults simulate breakage; this one simulates a tenant whose page just
+  has one more field -- harmless to a human, silently fatal to positional
+  locators. Proved both directions rather than only the fix: with the row
+  inserted, the label-anchored artifact still returns `$2340.18`, while
+  the position-only artifact returns `outcome: success` with
+  `savings_balance: "2019-03-14"` and the savings figure reported as
+  `checking_balance` -- a wrong answer that looks entirely plausible.
+  A third test shows the declared `money` type catching that same shifted
+  value as a second, independent layer.

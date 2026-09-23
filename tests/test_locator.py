@@ -13,6 +13,10 @@ SAMPLE_HTML = """
 <label for="name_field">Full Name</label>
 <button aria-label="Save Record">Save</button>
 <a href="/x">Click here</a>
+<table>
+<tr><td>Savings Balance</td><td>$10.00</td></tr>
+<tr><td>Balance</td><td>$20.00</td></tr>
+</table>
 </body></html>
 """
 
@@ -50,6 +54,30 @@ def test_table_position_strategy_resolves_cell_input(page):
         page, [LocatorCandidate(strategy=LocatorStrategy.TABLE_POSITION, value="row=1,col=1")]
     )
     assert loc.get_attribute("name") == "notes"
+
+
+def test_table_label_reads_the_cell_next_to_its_label(page):
+    loc, candidate = resolve(
+        page, [LocatorCandidate(strategy=LocatorStrategy.TABLE_LABEL, value="label=Savings Balance,col=1")]
+    )
+    assert loc.inner_text().strip() == "$10.00"
+
+
+def test_table_label_matches_the_label_exactly_not_as_a_substring(page):
+    """"Balance" must find the row labelled exactly "Balance" -- not the
+    one labelled "Savings Balance" that merely contains it. Substring
+    matching here would either resolve two rows (a loud failure) or, worse,
+    quietly pick the wrong one when only one row happens to contain it.
+    """
+    loc, candidate = resolve(
+        page, [LocatorCandidate(strategy=LocatorStrategy.TABLE_LABEL, value="label=Balance,col=1")]
+    )
+    assert loc.inner_text().strip() == "$20.00"
+
+
+def test_table_label_rejects_a_label_that_is_not_there(page):
+    with pytest.raises(LocatorResolutionError):
+        resolve(page, [LocatorCandidate(strategy=LocatorStrategy.TABLE_LABEL, value="label=Nope,col=1")])
 
 
 def test_css_fallback_resolves(page):

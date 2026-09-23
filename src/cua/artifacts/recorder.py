@@ -24,6 +24,7 @@ from cua.artifacts.schema import (
     CapabilityArtifact,
     InputSpec,
     OutputSpec,
+    OutputType,
     ProvenanceInfo,
     SecretSpec,
 )
@@ -65,6 +66,7 @@ def build_artifact(
     output_descriptions: dict[str, str] | None = None,
     output_values: dict[str, str] | None = None,
     output_assertions: dict[str, str] | None = None,
+    output_types: dict[str, str] | None = None,
     sensitive_outputs: list[str] | None = None,
     checkpoint_text: str = "",
     source_run_log: str | None = None,
@@ -77,6 +79,7 @@ def build_artifact(
     output_descriptions = output_descriptions or {}
     output_values = output_values or {}
     output_assertions = output_assertions or {}
+    output_types = output_types or {}
     sensitive_outputs = sensitive_outputs or []
 
     replayable = [s.action for s in steps if s.action is not None and s.action.type in _REPLAYABLE_TYPES]
@@ -99,7 +102,7 @@ def build_artifact(
         outputs.append(
             OutputSpec(
                 name=name,
-                type="string",
+                type=OutputType(output_types.get(name, OutputType.STRING.value)),
                 description=output_descriptions.get(name, ""),
                 target=target,
                 must_equal=output_assertions.get(name),
@@ -178,6 +181,27 @@ def _normalize(text: str) -> str:
 _NON_TEXT_EXTRACTABLE_TAGS = {"input", "select", "textarea"}
 
 
+def _label_cell_text(observation: Observation, value_element) -> str | None:
+    """The cell immediately to the left of a value, in the same row and
+    frame -- "Savings Balance" for the cell holding "$2340.18".
+
+    Read out of the same captured observation as everything else rather
+    than inferred: if the page doesn't actually have a label cell there,
+    this returns None and the locator falls back to position alone.
+    """
+    if value_element.table_col is None or value_element.table_col < 1:
+        return None
+    for element in observation.elements:
+        if (
+            element.frame == value_element.frame
+            and element.table_row == value_element.table_row
+            and element.table_col == value_element.table_col - 1
+        ):
+            label = (element.text or "").strip()
+            return label or None
+    return None
+
+
 def find_target_for_text(observation: Observation, text: str, prefer_table_position: bool = False) -> Target | None:
     """Finds an element matching `text` and builds a locator for it.
 
@@ -208,12 +232,23 @@ def find_target_for_text(observation: Observation, text: str, prefer_table_posit
                 # member's balance). Falling back to it would silently
                 # degrade a correct position-based locator into a broken
                 # value-based one instead of failing loudly.
-                candidates = [
+                candidates = []
+                label = _label_cell_text(observation, element)
+                if label:
+                    # Anchored to what the row says, so an inserted row
+                    # above it doesn't silently shift which cell we read.
+                    candidates.append(
+                        LocatorCandidate(
+                            strategy=LocatorStrategy.TABLE_LABEL,
+                            value=f"label={label},col={element.table_col}",
+                        )
+                    )
+                candidates.append(
                     LocatorCandidate(
                         strategy=LocatorStrategy.TABLE_POSITION,
                         value=f"row={element.table_row},col={element.table_col}",
                     )
-                ]
+                )
             else:
                 # Use the caller's own search phrase, not the full matched
                 # element text: for a checkpoint/business-outcome, that

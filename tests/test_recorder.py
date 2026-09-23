@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from cua.artifacts.recorder import ArtifactBuildError, build_artifact
-from cua.core.models import ActionType, RecordedStep
+from cua.core.models import ActionType, LocatorStrategy, RecordedStep
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REAL_RUN_LOG = REPO_ROOT / "evidence" / "discovery-member-lookup" / "run_log.json"
@@ -98,6 +98,20 @@ def test_no_secret_or_input_literal_anywhere_in_the_artifact(real_run):
     assert "teller1" not in dumped
     assert "{{secrets.username}}" in dumped
     assert "{{secrets.password}}" in dumped
+
+
+def test_outputs_are_label_anchored_first_then_position(real_run):
+    """The label comes out of the real captured observation -- the cell to
+    the left of the value in the same row -- not from anything hand-written.
+    """
+    data, steps = real_run
+    artifact = _build(data, steps)
+    savings = next(o for o in artifact.outputs if o.name == "savings_balance")
+
+    strategies = [c.strategy for c in savings.target.candidates]
+    assert strategies[0] == LocatorStrategy.TABLE_LABEL
+    assert savings.target.candidates[0].value == "label=Savings Balance,col=1"
+    assert LocatorStrategy.TABLE_POSITION in strategies  # kept as the fallback
 
 
 def test_outputs_have_locators_not_just_remembered_values(real_run):

@@ -6,9 +6,47 @@ exactly the same "how do I find this element" contract discovery already
 produces.
 """
 
+import re
+from enum import Enum
+
 from pydantic import BaseModel
 
 from cua.core.models import Action, Target
+
+
+class OutputType(str, Enum):
+    """What an output's value should look like.
+
+    Doubles as format validation at replay time: a value that doesn't
+    match its declared type is a HARD_FAILURE and is never returned. That
+    matters most when a page shifts under a positional locator -- reading
+    a date where a balance should be is the kind of mistake that's obvious
+    to a type check and invisible to everything else.
+    """
+
+    STRING = "string"  # anything; no validation
+    MONEY = "money"
+    INTEGER = "integer"
+
+
+# Deliberately loose about presentation (a leading $, thousands commas) and
+# strict about shape. Parenthesised negatives -- "($5.00)", used by some
+# ledgers -- are NOT covered; a page using those needs its own type rather
+# than a pattern loose enough to let anything through.
+_TYPE_PATTERNS: dict[OutputType, re.Pattern] = {
+    OutputType.MONEY: re.compile(r"^-?\$?-?[\d,]+\.\d{2}$"),
+    OutputType.INTEGER: re.compile(r"^-?[\d,]+$"),
+}
+
+
+def format_error(output_type: OutputType, value: str) -> str | None:
+    """Returns a human-readable complaint if `value` doesn't look like
+    `output_type`, or None if it's fine.
+    """
+    pattern = _TYPE_PATTERNS.get(output_type)
+    if pattern is None or pattern.match(value.strip()):
+        return None
+    return f"{value!r} does not look like {output_type.value}"
 
 
 class InputSpec(BaseModel):
@@ -34,7 +72,7 @@ class OutputSpec(BaseModel):
     """
 
     name: str
-    type: str = "string"
+    type: OutputType = OutputType.STRING
     description: str = ""
     target: Target
 

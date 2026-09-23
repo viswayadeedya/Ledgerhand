@@ -66,6 +66,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--output-type",
+        action="append",
+        metavar="name=type",
+        help=(
+            "Repeatable; declares what an output should look like (string|money|integer). A value that "
+            "doesn't match is a HARD_FAILURE and is never returned -- e.g. a date read where a balance "
+            "should be, after a page shifted under a positional locator."
+        ),
+    )
+    parser.add_argument(
         "--sensitive-output",
         action="append",
         metavar="name",
@@ -98,6 +108,7 @@ def main() -> None:
         output_descriptions=_parse_kv(args.output_desc),
         output_values=output_values,
         output_assertions=_parse_kv(args.assert_equals),
+        output_types=_parse_kv(args.output_type),
         sensitive_outputs=args.sensitive_output or [],
         checkpoint_text=args.checkpoint_text,
         source_run_log=args.run_log,

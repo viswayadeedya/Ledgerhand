@@ -12,6 +12,9 @@
 <tr><td><b>Member ID</b></td><td>{{ member.id }}</td></tr>
 <tr><td><b>Name</b></td><td>{{ member.first_name }} {{ member.last_name }}</td></tr>
 <tr><td><b>Status</b></td><td>{{ member.status }}</td></tr>
+{% if extra_row %}
+<tr><td><b>Account Opened</b></td><td>2019-03-14</td></tr>
+{% endif %}
 <tr><td><b>Savings Balance</b></td><td>${{ "%.2f"|format(member.savings_balance) }}</td></tr>
 <tr><td><b>Checking Balance</b></td><td>${{ "%.2f"|format(member.checking_balance) }}</td></tr>
 </table>
