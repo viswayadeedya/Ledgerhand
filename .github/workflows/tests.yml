@@ -1,0 +1,34 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install the project and test dependencies
+        run: pip install -e ".[dev]"
+
+      # --with-deps because a GitHub runner has none of Chromium's shared
+      # libraries preinstalled. Chromium only: nothing here drives another
+      # browser, and installing all three triples the slowest step.
+      - name: Install Playwright Chromium
+        run: playwright install --with-deps chromium
+
+      # No ANTHROPIC_API_KEY is set, deliberately. Every test here must pass
+      # without one -- discovery is the only part that needs the model, and
+      # tests/test_replay_offline.py exists to prove replay does not.
+      - name: Run the test suite
+        run: python -m pytest tests/ -q

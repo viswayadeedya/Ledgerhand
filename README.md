@@ -1,4 +1,7 @@
-# Computer-Use Automation System
+# Ledgerhand
+
+**Record a legacy back-office task once with an LLM; replay it forever
+without one.**
 
 An AI figures out how to do a task on a legacy web app once ("discovery"),
 we save what it learned as a typed, reviewable **capability artifact**, and
@@ -16,24 +19,40 @@ See [`REPORT.md`](REPORT.md) for the design write-up and
 [`DECISIONS.md`](DECISIONS.md) for the full, chronological "chose X over Y
 because Z" log this README and REPORT.md were distilled from.
 
+## Proof at a glance
+
+| | |
+|---|---|
+| **14 scenarios**, one per runtime condition the brief names, each a real run with its command, result and log | [`evidence/README.md`](evidence/README.md) |
+| **20-replay stability run**, every fault twice plus clean runs — **0 wrong answers**, 0 unexpected outcomes | [`evidence/stability/`](evidence/stability/) |
+| **1 genuine LLM discovery run** driving a real browser end to end | [`evidence/discovery-member-lookup/`](evidence/discovery-member-lookup/) |
+| **191 tests**, including a replay proved to work with `api.anthropic.com` unreachable | `pytest` |
+
+Every value a replay returns is checked against the app's seed data, so a
+run that quietly hands back the wrong member's balance fails rather than
+scoring as a success.
+
 ## Setup
 
-Requires **Python 3.11+**. Tested on Windows; nothing in the code is
-platform-specific, but the commands below use PowerShell syntax.
+Requires **Python 3.11+**. Developed on Windows and exercised on Linux by
+CI; nothing in the code is platform-specific. Commands are given in both
+shells — only the activate, copy and variable syntax differ.
 
 ```powershell
-# 1. Create and activate a virtual environment
+# PowerShell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-
-# 2. Install the project (editable) plus test dependencies
 pip install -e ".[dev]"
-
-# 3. Install Playwright's Chromium browser (one-time)
 playwright install chromium
-
-# 4. Copy the env template and fill in your Anthropic API key
 copy .env.example .env
+```
+```bash
+# bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+playwright install chromium
+cp .env.example .env
 ```
 
 Open `.env` and set `ANTHROPIC_API_KEY` to a real key. Everything else in
@@ -48,12 +67,13 @@ how that was verified).
 Everything except the discovery step is fully offline once the fake app is
 running locally -- no external network calls, no API key:
 
-```powershell
+```
 python -m pytest tests/ -v
 ```
 
-120 tests, ~3 minutes (most of that is real Playwright browser launches;
+191 tests, ~5 minutes (most of that is real Playwright browser launches;
 the fake-app-only tests in `test_fake_app.py` run in well under a second).
+The same suite runs on every push via GitHub Actions.
 
 ## Demo path
 
@@ -74,6 +94,9 @@ running them:
 ```powershell
 $env:TELLER_PASSWORD = "teller123"
 ```
+```bash
+export TELLER_PASSWORD="teller123"
+```
 
 **2. Run discovery** (needs your API key; a browser drives itself
 invisibly by default -- add `--headed` to watch it):
@@ -82,8 +105,17 @@ python -m cua.agent `
   --goal "Look up member 10001 and read their current savings balance." `
   --target "http://127.0.0.1:5055/login" `
   --domain "127.0.0.1:5055" `
-  --username teller1 --password teller123 `
+  --username teller1 --password $env:TELLER_PASSWORD `
   --max-steps 20 `
+  --evidence-dir "evidence/runs/discovery-member-lookup"
+```
+```bash
+python -m cua.agent \
+  --goal "Look up member 10001 and read their current savings balance." \
+  --target "http://127.0.0.1:5055/login" \
+  --domain "127.0.0.1:5055" \
+  --username teller1 --password "$TELLER_PASSWORD" \
+  --max-steps 20 \
   --evidence-dir "evidence/runs/discovery-member-lookup"
 ```
 Prints the outcome and outputs, and writes a full structured step log
@@ -94,7 +126,7 @@ Prints the outcome and outputs, and writes a full structured step log
 python -m cua.artifacts `
   --run-log "evidence/discovery-member-lookup/run_log.json" `
   --out "artifacts/member-savings-lookup.yaml" `
-  --id "member-savings-lookup" --version 2 `
+  --id "member-savings-lookup" --version 4 `
   --title "Look up a member's savings balance" `
   --description "Signs in to the teller system, searches for a member by ID, and reads their name and balances off the member detail page." `
   --input "member_id=10001" --sensitive-input member_id `
@@ -110,9 +142,8 @@ The `--input` literal is how the recorder *recognizes* a value in order to
 parameterize it away; it is never stored. `--assert-equals` is what makes
 replay prove it reached the right record, and `--sensitive-*` marks what
 gets masked wherever it's written down. Business outcomes are attached
-afterwards by `scripts/capture_business_outcome.py` and
-`scripts/capture_ambiguous_duplicate_outcome.py`, each from a really
-captured page state.
+afterwards by the three `scripts/capture_*_outcome.py` scripts, each from
+a really captured page state.
 
 A committed, real example is already at
 [`artifacts/member-savings-lookup.yaml`](artifacts/member-savings-lookup.yaml)
@@ -124,7 +155,13 @@ path an AI agent would trigger):
 python -m cua.replay `
   --artifact "artifacts/member-savings-lookup.yaml" `
   --input "member_id=10001" `
-  --secret "username=teller1" --secret "password=teller123"
+  --secret "username=teller1" --secret "password=$env:TELLER_PASSWORD"
+```
+```bash
+python -m cua.replay \
+  --artifact "artifacts/member-savings-lookup.yaml" \
+  --input "member_id=10001" \
+  --secret "username=teller1" --secret "password=$TELLER_PASSWORD"
 ```
 Try a different member (`member_id=10002`) to see it read different, real
 data live -- not a cached answer. Try a nonexistent one (`member_id=99999`)
@@ -157,7 +194,13 @@ get read by people who weren't part of it.
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:5055/admin/faults/api" `
   -ContentType "application/json" -Body '{"fault":"popup","armed":true}'
 python -m cua.replay --artifact "artifacts/member-savings-lookup.yaml" `
-  --input "member_id=10001" --secret "username=teller1" --secret "password=teller123"
+  --input "member_id=10001" --secret "username=teller1" --secret "password=$env:TELLER_PASSWORD"
+```
+```bash
+curl -X POST http://127.0.0.1:5055/admin/faults/api \
+  -H "Content-Type: application/json" -d '{"fault":"popup","armed":true}'
+python -m cua.replay --artifact "artifacts/member-savings-lookup.yaml" \
+  --input "member_id=10001" --secret "username=teller1" --secret "password=$TELLER_PASSWORD"
 ```
 Outcome: `recovered` -- an unexpected dialog fires, replay dismisses it
 itself, and still returns the correct balance. Other faults:
@@ -177,6 +220,10 @@ and the same fault becomes a hard failure:
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:5055/admin/settings/api" `
   -ContentType "application/json" -Body '{"name":"slow_load_seconds","value":12}'
 ```
+```bash
+curl -X POST http://127.0.0.1:5055/admin/settings/api \
+  -H "Content-Type: application/json" -d '{"name":"slow_load_seconds","value":12}'
+```
 Settings persist until `POST /admin/reset`, unlike faults, which fire once.
 
 **6. Try human handoff**, live, at your own terminal:
@@ -184,7 +231,14 @@ Settings persist until `POST /admin/reset`, unlike faults, which fire once.
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:5055/admin/faults/api" `
   -ContentType "application/json" -Body '{"fault":"duplicate_members","armed":true}'
 python -m cua.replay --artifact "artifacts/member-savings-lookup.yaml" `
-  --input "member_id=10001" --secret "username=teller1" --secret "password=teller123" `
+  --input "member_id=10001" --secret "username=teller1" --secret "password=$env:TELLER_PASSWORD" `
+  --handoff terminal
+```
+```bash
+curl -X POST http://127.0.0.1:5055/admin/faults/api \
+  -H "Content-Type: application/json" -d '{"fault":"duplicate_members","armed":true}'
+python -m cua.replay --artifact "artifacts/member-savings-lookup.yaml" \
+  --input "member_id=10001" --secret "username=teller1" --secret "password=$TELLER_PASSWORD" \
   --handoff terminal
 ```
 Two more worth trying, because they end differently on purpose:
@@ -249,3 +303,7 @@ why the second is a deterministic capture rather than a second LLM run.
 - The full chronological decision log (every "chose X over Y because Z",
   including real bugs found and fixed along the way): [`DECISIONS.md`](DECISIONS.md)
 - Real, reproducible evidence for every part: [`evidence/README.md`](evidence/README.md)
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).

@@ -1755,3 +1755,32 @@ scenario with a real run behind it, and nothing beyond that list.
 - **Both capabilities are listed, with the second's provenance up front.**
   A reader finding two artifacts should not have to open them to learn that
   one came from the LLM run and one from deterministic capture.
+
+### Final polish
+
+- **Named the project Ledgerhand**, with a one-line tagline and a "Proof at
+  a glance" table linking straight to the evidence. A reviewer meeting the
+  repo cold should be able to see what was demonstrated before deciding how
+  much of it to read.
+- **Both shells, everywhere.** The commands were PowerShell-only because
+  that is where they were developed and verified; CI runs Linux, so leaving
+  them that way would have made the documented path untestable on the
+  platform that actually tests it.
+- **CI sets no `ANTHROPIC_API_KEY`, on purpose.** Every test must pass
+  without one -- discovery is the only part that needs the model, and
+  `tests/test_replay_offline.py` exists to prove replay does not. A CI job
+  with a key would quietly stop testing that.
+- **REPORT.md is 2,556 words against a ~2,000 target, and that overage is
+  a deliberate choice rather than an oversight.** Four passes of
+  compression took it from 2,802 without removing a single decision;
+  getting under 2,000 from here means deleting content, and the cheapest
+  content to delete is the "Limits" passages in Sections 3, 5 and 6 -- what
+  status-code detection misses on a 200-with-error-body app, what the load
+  check can't see on a client-rendered page, what page-level recording
+  can't observe about the browser. Those are the honest-limitation
+  statements, which are decisions in their own right and the part a
+  reviewer is least able to reconstruct. Kept, and the number reported
+  rather than the constraint silently missed.
+- **Confirmed the assignment PDF is absent** from the working tree and from
+  every commit reachable in the repo (`git log --diff-filter=A`, plus an
+  object-name sweep across all refs).
