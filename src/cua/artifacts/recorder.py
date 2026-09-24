@@ -8,7 +8,9 @@ human can look at a run's log, decide these particular values are the real
 parameters, and build the artifact without re-running anything.
 """
 
+import re
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 from cua.core.models import (
     Action,
@@ -17,9 +19,11 @@ from cua.core.models import (
     LocatorStrategy,
     Observation,
     RecordedStep,
+    RiskLevel,
     Target,
 )
 from cua.artifacts.schema import (
+    ArtifactStep,
     BusinessOutcomeSpec,
     CapabilityArtifact,
     InputSpec,
@@ -27,7 +31,9 @@ from cua.artifacts.schema import (
     OutputType,
     ProvenanceInfo,
     SecretSpec,
+    StepRisk,
 )
+from cua.guardrails.policy import PolicyEngine
 
 # Only these action types have a stable, replayable locator. TYPE/KEY act on
 # "whatever has focus" with no target at all, so they can't be replayed
@@ -71,6 +77,7 @@ def build_artifact(
     checkpoint_text: str = "",
     source_run_log: str | None = None,
     version: int = 1,
+    policy: PolicyEngine | None = None,
 ) -> CapabilityArtifact:
     inputs = inputs or {}
     input_descriptions = input_descriptions or {}
@@ -82,11 +89,12 @@ def build_artifact(
     output_types = output_types or {}
     sensitive_outputs = sensitive_outputs or []
 
-    replayable = [s.action for s in steps if s.action is not None and s.action.type in _REPLAYABLE_TYPES]
+    replayable = [s for s in steps if s.action is not None and s.action.type in _REPLAYABLE_TYPES]
     if not replayable:
         raise ArtifactBuildError("no replayable steps found -- every action was TYPE/KEY or unresolved")
 
-    parameterized_steps = [_parameterize(a, inputs, secret_values) for a in replayable]
+    policy = policy or PolicyEngine()
+    parameterized_steps = _build_steps(steps, inputs, secret_values, policy)
 
     final_observation = _last_observation(steps)
     if final_observation is None:
@@ -140,6 +148,44 @@ def build_artifact(
     )
 
 
+def _build_steps(
+    steps: list[RecordedStep],
+    inputs: dict[str, str],
+    secret_values: dict[str, str],
+    policy: PolicyEngine,
+) -> list[ArtifactStep]:
+    """Walks the whole run, not just the replayable steps, so each step can
+    be compared against the page as it stood immediately before it ran --
+    which is what makes "where did this step take us" answerable.
+    """
+    artifact_steps: list[ArtifactStep] = []
+    before: Observation | None = None
+    for recorded in steps:
+        action = recorded.action
+        if action is not None and action.type in _REPLAYABLE_TYPES:
+            artifact_steps.append(_to_artifact_step(recorded, before, inputs, secret_values, policy))
+        if recorded.result is not None and recorded.result.observation is not None:
+            before = recorded.result.observation
+    return artifact_steps
+
+
+def _to_artifact_step(
+    recorded: RecordedStep,
+    before: Observation | None,
+    inputs: dict[str, str],
+    secret_values: dict[str, str],
+    policy: PolicyEngine,
+) -> ArtifactStep:
+    action = _parameterize(recorded.action, inputs, secret_values)
+    risk, note = _classify(recorded, before, policy)
+    fields = action.model_dump()
+    # Keep whatever discovery recorded if it said anything; only fill the
+    # blank. The model's own account of why it did something is better
+    # context than a generated sentence when it exists.
+    fields["description"] = action.description or _describe(action, recorded)
+    return ArtifactStep(**fields, risk=risk, risk_note=note)
+
+
 def _parameterize(action: Action, inputs: dict[str, str], secret_values: dict[str, str]) -> Action:
     if action.value is None:
         return action
@@ -147,6 +193,200 @@ def _parameterize(action: Action, inputs: dict[str, str], secret_values: dict[st
     if new_value == action.value:
         return action
     return action.model_copy(update={"value": new_value})
+
+
+# -- plain-English descriptions -------------------------------------------
+
+
+def _describe(action: Action, recorded: RecordedStep) -> str:
+    """Says what the step does, in the terms a person would use.
+
+    Built from the locator that actually resolved during discovery, not the
+    raw selector: "Click the Sign On button" is reviewable, 'Click
+    tr:nth-child(3) > td > a' is not. Everything here comes from the run
+    log -- nothing is inferred about intent, because the recorder doesn't
+    know it and guessing would put a confident wrong sentence next to a
+    step a human is supposed to be checking.
+    """
+    what = _human_target(action, recorded)
+    if action.type == ActionType.NAVIGATE:
+        return f"Go to {_path_of(action.url)}."
+    if action.type == ActionType.CLICK:
+        return f"Click {what}." if what else "Click the recorded element."
+    if action.type == ActionType.SUBMIT:
+        return f"Submit {what}." if what else "Submit the form."
+    if action.type == ActionType.FILL:
+        return f"Enter {_describe_value(action.value)} into {what}." if what else "Fill the recorded field."
+    if action.type == ActionType.SELECT:
+        return f"Choose {_describe_value(action.value)} in {what}." if what else "Make the recorded selection."
+    if action.type == ActionType.WAIT:
+        return "Wait for the page to settle."
+    if action.type == ActionType.DISMISS_DIALOG:
+        return "Dismiss the dialog the page opens."
+    return f"{action.type.value} step."
+
+
+def _describe_value(value: str | None) -> str:
+    """Names a value without reproducing it.
+
+    A parameterized step says "the member_id input"; a literal says "this
+    fixed value". Either way the artifact never gains a sentence with a
+    real credential or member ID in it -- the templates exist precisely so
+    those aren't in the file.
+    """
+    if not value:
+        return "an empty value"
+    m = re.match(r"^\{\{(inputs|secrets)\.(\w+)\}\}$", value)
+    if m:
+        kind, name = m.groups()
+        return f"the {name} {'input' if kind == 'inputs' else 'secret'}"
+    return f"the recorded value {value!r}"
+
+
+def _human_target(action: Action, recorded: RecordedStep) -> str:
+    """The most readable description of what the step acted on.
+
+    Prefers the strategy that actually resolved at discovery time, since
+    that's the one replay will try first and the one a reviewer can check
+    against the real page.
+    """
+    result = recorded.result
+    if result is not None and result.resolved_strategy is not None and result.resolved_value:
+        strategy, value = result.resolved_strategy, result.resolved_value
+        if strategy == LocatorStrategy.ROLE:
+            return f'the "{value}" {action.target.candidates[0].role or "control"}' if action.target else f'"{value}"'
+        if strategy == LocatorStrategy.LABEL:
+            return f'the "{value}" field'
+        if strategy == LocatorStrategy.TEXT:
+            return f'the "{value}" link or text'
+        if strategy == LocatorStrategy.TABLE_LABEL:
+            label, _, _col = value.partition(",col=")
+            return f'the "{label.removeprefix("label=")}" field'
+        if strategy == LocatorStrategy.TABLE_POSITION:
+            # "row=1,col=1" tells a reviewer nothing they can check against
+            # the real page. The cell to its left usually holds the form's
+            # own label for it, so use that when the run actually captured
+            # one and fall back to the coordinates when it didn't.
+            label = _label_for_position(recorded, value)
+            return f'the "{label}" field' if label else f"the table cell at {value}"
+        return f"the element matching {value!r}"
+
+
+def _label_for_position(recorded: RecordedStep, position: str) -> str | None:
+    """The form's own label for the cell at `position`, for describing it.
+
+    Looks for the label cell directly rather than via the element being
+    filled, because that element is often not in the observation at all --
+    a password input is deliberately never scanned for its value, so
+    nothing is recorded at its coordinates.
+
+    Checks left first (`User ID: | [input]`) then above
+    (`Member ID or Last Name:` / `[input]`), which covers both layouts this
+    app uses. Only used for the human-readable description; the locator
+    itself is unaffected by what this returns.
+    """
+    observation = recorded.result.observation if recorded.result is not None else None
+    if observation is None:
+        return None
+    m = re.match(r"^row=(\d+),col=(\d+)$", position)
+    if not m:
+        return None
+    row, col = int(m.group(1)), int(m.group(2))
+    frame = recorded.action.target.frame if recorded.action.target else None
+
+    neighbours = [(row, col - 1), (row - 1, col)]
+    for want_row, want_col in neighbours:
+        if want_row < 0 or want_col < 0:
+            continue
+        for element in observation.elements:
+            if (
+                element.frame == frame
+                and element.table_row == want_row
+                and element.table_col == want_col
+                and element.tag not in _NON_TEXT_EXTRACTABLE_TAGS
+            ):
+                label = (element.text or "").strip().rstrip(":").strip()
+                if label:
+                    return label
+    return None
+    if action.target and action.target.candidates:
+        first = action.target.candidates[0]
+        return f"the element matching {first.value!r}"
+    return ""
+
+
+def _path_of(url: str | None) -> str:
+    if not url:
+        return "the recorded URL"
+    return urlsplit(url).path or url
+
+
+# -- risk labels -----------------------------------------------------------
+
+
+def _classify(
+    recorded: RecordedStep, before: Observation | None, policy: PolicyEngine
+) -> tuple[StepRisk, str]:
+    """Labels a step using the destination discovery actually reached.
+
+    A click's risk can't be judged from the click itself -- the selector
+    says nothing about where it goes, and "*/new-subaccount/commit" is a
+    route, not a button. But the run log recorded where the page went
+    afterwards, so that is what gets classified, through the same
+    PolicyEngine replay uses. When the log captured no destination the
+    label is UNVERIFIED: "nobody checked" is the honest answer, and
+    quietly labelling an unchecked step safe is the dangerous one.
+
+    This is review metadata only. Replay still re-evaluates every action
+    live, so a step labelled safe here that navigates somewhere risky at
+    replay time is still blocked then.
+    """
+    action = recorded.action
+    if action.type == ActionType.NAVIGATE and action.url:
+        return _risk_of([action.url], policy, f"declared destination {_path_of(action.url)}")
+
+    after = recorded.result.observation if recorded.result is not None else None
+    if after is None:
+        return StepRisk.UNVERIFIED, "no page state was captured at discovery; replay still checks it live"
+
+    moved = _destinations_reached(before, after)
+    if moved:
+        where = ", ".join(_path_of(url) for url in moved)
+        return _risk_of(moved, policy, f"destination {where} observed at discovery")
+
+    # The step changed nothing about where we are (typing into a field, for
+    # instance). Say so rather than reporting the current URL as a
+    # "destination" it never travelled to.
+    return _risk_of([after.url], policy, f"no navigation; stayed on {_path_of(after.url)} at discovery")
+
+
+def _risk_of(urls: list[str], policy: PolicyEngine, note: str) -> tuple[StepRisk, str]:
+    """Riskiest wins. A step that opened several frames is as risky as the
+    riskiest place it landed.
+    """
+    decisions = [policy.evaluate(Action(type=ActionType.NAVIGATE, url=url)) for url in urls if url]
+    if not decisions:
+        return StepRisk.UNVERIFIED, note
+    risk = StepRisk.RISKY if any(d.risk == RiskLevel.RISKY for d in decisions) else StepRisk.SAFE
+    return risk, f"{note}; re-checked at replay"
+
+
+def _destinations_reached(before: Observation | None, after: Observation) -> list[str]:
+    """Which URLs this step actually navigated to.
+
+    Comparing before/after rather than reading "the main frame" keeps this
+    honest on a frameset app: the control that was clicked usually lives in
+    one frame (the nav) while the navigation happens in another (the
+    content), so the frame the step *acted in* is the wrong answer. What
+    changed is the right one, and it needs no knowledge of this particular
+    app's frame names.
+    """
+    if before is None:
+        return [after.url] if after.url else []
+    if after.url and after.url != before.url:
+        # The whole page moved; frame changes underneath it are consequences.
+        return [after.url]
+    return [url for name, url in after.frames.items() if before.frames.get(name) != url]
 
 
 def _parameterize_value(value: str, inputs: dict[str, str], secret_values: dict[str, str]) -> str:

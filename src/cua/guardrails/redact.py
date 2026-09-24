@@ -52,6 +52,18 @@ def redact_text(text: str) -> str:
     return text
 
 
+def mask_sensitive(values: dict[str, str], sensitive_names) -> dict[str, str]:
+    """Masks the named values, leaving the rest alone.
+
+    Applied at the boundaries that *write things down* -- the terminal, a
+    result file -- and never to the data the capability returns to its
+    caller. The caller asked for the balance and needs the balance; the
+    disk and the scrollback don't.
+    """
+    names = set(sensitive_names or ())
+    return {name: (mask_partial(value) if name in names else value) for name, value in values.items()}
+
+
 def mask_partial(value: str | None, keep: int = 2) -> str:
     """Masks a sensitive value but keeps its last few characters.
 

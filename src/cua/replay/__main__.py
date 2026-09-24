@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 
 from cua.artifacts.schema import CapabilityArtifact
+from cua.guardrails.redact import mask_sensitive
 from cua.handoff import InteractivePauseHandoff, TerminalOperatorHandoff
 from cua.replay.engine import ReplayEngine
 from cua.replay.models import ReplayOutcome
@@ -57,6 +58,15 @@ def main() -> int:
     parser.add_argument("--evidence-dir", default="evidence/runs")
     parser.add_argument("--out", default=None, help="Optional path to also write the ReplayResult as JSON")
     parser.add_argument(
+        "--show-sensitive",
+        action="store_true",
+        help=(
+            "Print outputs marked 'sensitive' in the artifact in full instead of masked. For local "
+            "demos on fake data. Files written by --out and everything under --evidence-dir stay "
+            "masked regardless -- this affects your terminal only."
+        ),
+    )
+    parser.add_argument(
         "--handoff",
         choices=["none", "terminal", "interactive"],
         default="none",
@@ -104,7 +114,11 @@ def main() -> int:
         for esc in result.escalations:
             print(f"  - step {esc.step_index}: {esc.decision.value} -- {esc.operator_note}")
     if result.outputs:
-        print(f"Outputs: {json.dumps(result.outputs, indent=2)}")
+        shown = result.outputs if args.show_sensitive else mask_sensitive(result.outputs, result.sensitive_outputs)
+        print(f"Outputs: {json.dumps(shown, indent=2)}")
+        if result.sensitive_outputs and not args.show_sensitive:
+            masked = ", ".join(sorted(result.sensitive_outputs))
+            print(f"  ({masked} masked -- pass --show-sensitive to print in full)")
     if result.business_outcome:
         print(f"Business outcome: {result.business_outcome} -- {result.business_outcome_description}")
     if result.error:
@@ -115,12 +129,18 @@ def main() -> int:
         print(f"  detail  : {result.error.message}")
 
     if args.out:
+        # Always masked, no flag. --show-sensitive is about what a person
+        # sees on their own screen for a moment; this is a file that
+        # outlives the run, gets committed as evidence, and is read by
+        # people who were never part of it.
+        persisted = result.model_dump(mode="json")
+        persisted["outputs"] = mask_sensitive(result.outputs, result.sensitive_outputs)
         payload = {
             "recorded_at": datetime.now(timezone.utc).isoformat(),
             "artifact_id": artifact.id,
             "artifact_version": artifact.version,
             "inputs": _parse_kv(args.input),
-            "result": result.model_dump(mode="json"),
+            "result": persisted,
         }
         out_path = Path(args.out)
         out_path.parent.mkdir(parents=True, exist_ok=True)

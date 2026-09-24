@@ -914,3 +914,76 @@ one extra row in it silently returns the wrong value.
   comparison's entire content is the values -- masked to `***14` and
   `***18`, "a date landed in a money field" becomes invisible. Real
   capability runs under `evidence/runs/` stay masked.
+
+### Phase 3: making the artifact reviewable
+
+The artifact is the thing a human is supposed to approve before it runs
+unattended. That only works if it can actually be read.
+
+- **Step descriptions are generated, not hand-written, and come from the
+  locator that actually resolved at discovery.** "Click the Sign On
+  button" is checkable against the real page; `tr:nth-child(5) > td >
+  input` is not. Nothing is inferred about *intent* -- the recorder
+  doesn't know it, and a confident wrong sentence next to a step someone
+  is meant to be checking is worse than no sentence.
+- **`Action.description` reused rather than a second description field.**
+  It has been on `Action` since Part 4 for the model to explain itself
+  during discovery, and has been null on every recorded step. Filling the
+  blank was the whole ask; adding `ArtifactStep.description` beside it
+  would have left two fields with one meaning. A discovery-supplied
+  description, when there is one, wins over the generated one.
+- **Descriptions name parameters without reproducing their values**: "the
+  password secret", "the member_id input". The templates exist precisely
+  so credentials and member IDs aren't in the file -- a generated sentence
+  must not put them back. Tested.
+- **Field labels for form steps read from the captured observation**,
+  looking left (`User ID: | [input]`) then above (`Member ID or Last
+  Name:` over the box), because this app uses both layouts. Looked up by
+  coordinate rather than via the element being filled, since a password
+  input is deliberately never scanned and so *nothing* is recorded at its
+  position -- going through it would have left exactly the password field
+  undescribed.
+- **Risk is judged from where the step actually went, by diffing the
+  observation before and after it.** A click's selector says nothing about
+  its destination, and `*/new-subaccount/commit` is a route, not a button.
+  Diffing rather than reading "the main frame" keeps it honest on a
+  frameset app, where the control clicked lives in one frame (nav) and the
+  navigation happens in another (content) -- the frame the step *acted in*
+  is the wrong answer, and needs app-specific knowledge to correct. A step
+  that navigated nowhere says so instead of reporting its current URL as a
+  "destination" it never travelled to.
+- **`unverified` when nothing was observed**, rather than defaulting to
+  safe. Saying "nobody checked" is honest; labelling an unchecked step
+  safe is the failure mode this whole pass exists to remove.
+- **Risk labels are review metadata, not a third enforcement point.**
+  Replay still re-evaluates every action live through the same
+  `PolicyEngine`, so a step labelled safe that navigates somewhere risky
+  at replay time is still blocked then. The label answers "should I be
+  nervous about step 7" before anyone runs it.
+- **`ArtifactStep` subclasses `Action` instead of wrapping it.** A wrapper
+  (`{description, risk, action}`) would have been tidier and would have
+  broken every existing artifact -- too much for the 1.1 bump Phase 4
+  makes, which should mean old files still load. As a subclass, replay,
+  the policy engine and the surface all keep receiving something that *is*
+  an `Action`, and a `before` validator accepts a plain `Action` so code
+  that builds artifacts directly doesn't need to know the type exists.
+- **YAML written with `exclude_defaults` rather than "drop anything
+  falsy".** `value: ''` on a fill is a real instruction (clear this box)
+  and differs from the default of `None`, so it survives; a blanket
+  empty-check would have silently changed what artifacts do. Chose that
+  over hand-listing fields to prune, which would drift every time a field
+  is added. `schema_version` and `version` are written even at their
+  defaults -- a reader shouldn't need to know the defaults to answer "what
+  version is this?". A round-trip test keeps "readable" from being bought
+  with a broken contract.
+- **Masking is opt-in per artifact and applied at the write-down
+  boundaries only.** The value reaches the caller intact -- it asked for
+  the balance and needs the balance; the scrollback and the disk don't.
+  `--show-sensitive` affects the terminal only, because that is a person
+  looking at their own screen for a moment; `--out` files and everything
+  under `--evidence-dir` stay masked with no flag, because they outlive
+  the run and get read by people who were never part of it.
+- **`mask_partial` keeps the last two characters** rather than full
+  redaction, so an operator can still correlate "***18" with the balance
+  they were asked about. Full redaction makes a failure undebuggable;
+  the full value shouldn't be on disk at all.

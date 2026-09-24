@@ -6,6 +6,7 @@ outside: the process's exit status. A test that asserted on main()'s return
 value would pass even if nothing ever passed it to sys.exit().
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -14,7 +15,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from cua.artifacts.schema import CapabilityArtifact
+from cua.artifacts.schema import CapabilityArtifact, to_yaml
 from cua.guardrails.policy import PolicyConfig
 from cua.replay.__main__ import EXIT_CODES, USAGE_EXIT_CODE
 from cua.replay.models import ReplayOutcome
@@ -50,9 +51,7 @@ def run_cli(fake_app_server, tmp_path):
 
     def _run(artifact: CapabilityArtifact, *args: str) -> subprocess.CompletedProcess:
         artifact_path = tmp_path / f"{artifact.id}.yaml"
-        artifact_path.write_text(
-            yaml.safe_dump(artifact.model_dump(mode="json"), sort_keys=False), encoding="utf-8"
-        )
+        artifact_path.write_text(to_yaml(artifact), encoding="utf-8")
         return subprocess.run(
             [
                 sys.executable, "-m", "cua.replay",
@@ -123,3 +122,69 @@ def test_missing_required_input_is_a_usage_error_not_a_traceback(run_cli, lookup
     assert proc.returncode == USAGE_EXIT_CODE
     assert "Traceback" not in proc.stderr
     assert "missing required inputs" in proc.stderr
+
+
+# -- Phase 3: what gets written down --------------------------------------
+
+
+@pytest.fixture
+def sensitive_lookup(lookup) -> CapabilityArtifact:
+    """The committed artifact with the values a real deployment would mark
+    sensitive: the member's name and both balances.
+    """
+    outputs = [
+        spec.model_copy(update={"sensitive": True})
+        if spec.name in ("member_name", "savings_balance", "checking_balance")
+        else spec
+        for spec in lookup.outputs
+    ]
+    return lookup.model_copy(update={"outputs": outputs})
+
+
+def test_sensitive_outputs_are_masked_in_the_terminal_by_default(run_cli, sensitive_lookup):
+    proc = run_cli(sensitive_lookup, "--input", "member_id=10001")
+
+    assert proc.returncode == 0
+    assert "$2340.18" not in proc.stdout
+    assert "Maria Garcia" not in proc.stdout
+    assert "***18" in proc.stdout  # enough tail to recognise, not enough to leak
+    assert "--show-sensitive" in proc.stdout  # and says how to see the full value
+    assert "10001" in proc.stdout  # member_id isn't marked sensitive here, so it isn't touched
+
+
+def test_show_sensitive_prints_them_in_full(run_cli, sensitive_lookup):
+    proc = run_cli(sensitive_lookup, "--input", "member_id=10001", "--show-sensitive")
+
+    assert proc.returncode == 0
+    assert "$2340.18" in proc.stdout
+    assert "Maria Garcia" in proc.stdout
+
+
+def test_result_files_stay_masked_even_with_show_sensitive(run_cli, sensitive_lookup, tmp_path):
+    """The flag is about what a person sees on their own screen for a
+    moment. A result file outlives the run and gets read by people who were
+    never part of it, so it is masked regardless.
+    """
+    out_path = tmp_path / "result.json"
+    proc = run_cli(
+        sensitive_lookup, "--input", "member_id=10001", "--show-sensitive", "--out", str(out_path)
+    )
+
+    assert proc.returncode == 0
+    assert "$2340.18" in proc.stdout  # the flag worked for the terminal
+
+    written = json.loads(out_path.read_text(encoding="utf-8"))
+    assert "$2340.18" not in out_path.read_text(encoding="utf-8")
+    assert written["result"]["outputs"]["savings_balance"] == "***18"
+    assert written["result"]["outputs"]["member_name"] == "***ia"
+    assert written["result"]["outputs"]["member_id"] == "10001"  # not marked sensitive
+
+
+def test_masking_does_not_touch_an_artifact_that_marks_nothing_sensitive(run_cli, lookup):
+    """No flags, no sensitive declarations -- nothing changes. The masking
+    has to be opt-in per artifact, not a blanket transform on every value.
+    """
+    proc = run_cli(lookup, "--input", "member_id=10001")
+
+    assert "$2340.18" in proc.stdout
+    assert "--show-sensitive" not in proc.stdout  # no note offered when there's nothing to mask

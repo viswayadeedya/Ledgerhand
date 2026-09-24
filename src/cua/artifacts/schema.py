@@ -9,7 +9,8 @@ produces.
 import re
 from enum import Enum
 
-from pydantic import BaseModel
+import yaml
+from pydantic import BaseModel, field_validator
 
 from cua.core.models import Action, Target
 
@@ -47,6 +48,51 @@ def format_error(output_type: OutputType, value: str) -> str | None:
     if pattern is None or pattern.match(value.strip()):
         return None
     return f"{value!r} does not look like {output_type.value}"
+
+
+class StepRisk(str, Enum):
+    """How a step was classified, for a human skimming the artifact.
+
+    Deliberately not a fourth thing replay consults -- the live policy
+    engine re-decides every action at replay time, exactly as before. This
+    is review metadata: it answers "should I be nervous about step 7"
+    before anyone runs it.
+    """
+
+    SAFE = "safe"
+    RISKY = "risky"
+    UNVERIFIED = "unverified"
+    """Nothing was observed for this step during discovery, so no honest
+    claim can be made about where it goes. Says "nobody knows" rather than
+    letting an unchecked step look checked.
+    """
+
+
+class ArtifactStep(Action):
+    """An Action plus the thing a reviewer needs and replay doesn't: how
+    risky this step was judged to be, and on what evidence.
+
+    A subclass rather than a wrapper object on purpose. Replay, the policy
+    engine and the surface all keep receiving something that *is* an
+    Action, so none of them change; and an artifact written before these
+    fields existed still validates, with both defaulting to empty. A
+    wrapper would have been tidier and would have broken every existing
+    artifact -- too much for a minor schema bump.
+
+    `description` is inherited, not redeclared. It has been on Action all
+    along for the model to explain its own intent during discovery, and has
+    been null on every recorded step; the recorder now fills it from what
+    the step actually did rather than adding a second description field
+    beside an empty one.
+    """
+
+    risk: StepRisk | None = None
+    risk_note: str = ""
+    """Where the risk judgement came from, e.g. "destination
+    /app/member/10001 observed at discovery; re-checked at replay". Kept
+    separate from `risk` so the label stays machine-readable while the
+    provenance stays human-readable.
+    """
 
 
 class InputSpec(BaseModel):
@@ -135,7 +181,25 @@ class CapabilityArtifact(BaseModel):
     secrets: list[SecretSpec] = []
     outputs: list[OutputSpec] = []
 
-    steps: list[Action]
+    steps: list[ArtifactStep]
+
+    @field_validator("steps", mode="before")
+    @classmethod
+    def _accept_plain_actions(cls, value):
+        """A bare Action is a perfectly good step -- it just doesn't carry a
+        risk label. Accept one and let the new fields default, so code that
+        builds an artifact directly (tests, scripts) doesn't have to know
+        about ArtifactStep, and so an artifact written before these fields
+        existed loads unchanged.
+        """
+        if not isinstance(value, list):
+            return value
+        return [
+            ArtifactStep(**item.model_dump())
+            if isinstance(item, Action) and not isinstance(item, ArtifactStep)
+            else item
+            for item in value
+        ]
 
     checkpoint: Target
     checkpoint_description: str
@@ -143,3 +207,34 @@ class CapabilityArtifact(BaseModel):
     business_outcomes: list[BusinessOutcomeSpec] = []
 
     provenance: ProvenanceInfo
+
+
+# Written out even when they equal their defaults: they identify which
+# contract this file is, and a reader shouldn't have to know the defaults
+# to answer "what version is this?".
+_ALWAYS_WRITTEN = ("schema_version", "version")
+
+
+def to_yaml(artifact: CapabilityArtifact) -> str:
+    """Serializes an artifact for review, leaving out every field still at
+    its default.
+
+    The point is that the artifact is meant to be *read* by a human before
+    it's trusted. A dump of every field buries the four lines that matter
+    under `role: null`, `frame: null`, `sensitive: false` and
+    `description: ''` repeated a few dozen times, and a reviewer who has to
+    skim past noise stops reading carefully.
+
+    `exclude_defaults` rather than "drop anything falsy": a `value: ''` on
+    a fill step is a real instruction (clear this box) and differs from the
+    default of None, so it survives -- where a blanket empty-check would
+    silently change what the artifact does.
+    """
+    lean = artifact.model_dump(mode="json", exclude_defaults=True)
+    full = artifact.model_dump(mode="json")
+    ordered = {
+        name: (full[name] if name in _ALWAYS_WRITTEN else lean[name])
+        for name in full  # model_dump preserves declaration order
+        if name in lean or name in _ALWAYS_WRITTEN
+    }
+    return yaml.safe_dump(ordered, sort_keys=False, allow_unicode=True)

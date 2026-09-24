@@ -120,6 +120,14 @@ doesn't have to parse stdout to know what happened:
 | `3` | `needs_human` | route to a person |
 | `64` | -- | bad command line, or a missing `--input`/`--secret` (kept off `2` so it can't be read as a business outcome) |
 
+Outputs the artifact marks `sensitive` print masked to their last two
+characters (`"savings_balance": "***18"`). The value still reaches the
+caller intact -- masking applies where things get *written down*, not to
+what the capability returns. Add `--show-sensitive` to print them in full
+on your own terminal; files written by `--out` and everything under
+`--evidence-dir` stay masked regardless, since those outlive the run and
+get read by people who weren't part of it.
+
 **5. Trigger a recoverable runtime fault** and watch replay handle it:
 ```powershell
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:5055/admin/faults/api" `

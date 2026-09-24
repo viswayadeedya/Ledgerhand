@@ -2,9 +2,8 @@ import argparse
 import json
 from pathlib import Path
 
-import yaml
-
 from cua.artifacts.recorder import build_artifact
+from cua.artifacts.schema import to_yaml
 from cua.core.models import RecordedStep
 
 
@@ -117,10 +116,7 @@ def main() -> None:
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(
-        yaml.safe_dump(artifact.model_dump(mode="json"), sort_keys=False, allow_unicode=True),
-        encoding="utf-8",
-    )
+    out_path.write_text(to_yaml(artifact), encoding="utf-8")
     print(f"Wrote {out_path} ({len(artifact.steps)} steps, {len(artifact.outputs)} outputs)")
 
 
