@@ -66,6 +66,15 @@ It listens on `http://127.0.0.1:5055`. Sign-on credentials: `teller1` /
 Member IDs `10001`-`10005` exist in the seed data
 (`src/cua/fake_app/data.py`); anything else is a legitimate "not found."
 
+**This file is the only place that password is written down.** Nothing
+under `evidence/` or `artifacts/` contains it, and a test enforces that
+with no exemption list. The reproduction commands in those folders take it
+from an environment variable instead, so set it once per shell before
+running them:
+```powershell
+$env:TELLER_PASSWORD = "teller123"
+```
+
 **2. Run discovery** (needs your API key; a browser drives itself
 invisibly by default -- add `--headed` to watch it):
 ```powershell
@@ -191,6 +200,22 @@ already fixed it manually, or abandon. Add `--headed` instead of
 `--handoff terminal` and pass `--handoff interactive` to take over the
 *actual browser window* via the Playwright Inspector.
 
+**7. Regenerate all the evidence** (every scenario, from real runs):
+```powershell
+python scripts/run_evidence.py            # 14 scenarios -> one folder each
+python scripts/run_evidence.py --list     # just the names
+python scripts/run_stability.py           # 20 replays -> evidence/stability/
+```
+`run_evidence.py` starts the fake app itself (or reuses one already on
+5055) and writes [`evidence/README.md`](evidence/README.md) from the runs
+it just did -- the expected/actual columns there are read back off each
+run's own `result.json`, never typed. `run_stability.py` replays against
+every injected fault twice plus clean runs, and checks every value handed
+back against the app's seed data; **wrong answers must be 0**.
+
+Both exit non-zero if any run ends somewhere other than where it should,
+so they work as checks, not just as generators.
+
 ## Project structure
 
 ```
@@ -203,11 +228,20 @@ src/cua/
   artifacts/   Part 5 -- capability schema + recorder
   replay/      Part 6 -- deterministic replay + error taxonomy
   handoff/     Part 7 -- human escalation and live-session takeover
-tests/         69 tests across every layer above
-scripts/       one-off deterministic exploration scripts (business-outcome capture, handoff demo)
+tests/         191 tests across every layer above
+scripts/       deterministic capture scripts, plus the evidence and stability runners
 artifacts/     saved capability YAML files (the reusable deliverable)
 evidence/      real run logs, screenshots, and results -- see evidence/README.md
 ```
+
+Two capabilities ship in `artifacts/`:
+[`member-savings-lookup.yaml`](artifacts/member-savings-lookup.yaml), built
+from the genuine LLM discovery run, and
+[`member-subaccount-open.yaml`](artifacts/member-subaccount-open.yaml),
+which **opens an account** -- an irreversible action whose commit step is
+blocked by policy until a human approves it. See
+[`artifacts/README.md`](artifacts/README.md) for how each was produced and
+why the second is a deterministic capture rather than a second LLM run.
 
 ## Everything else
 

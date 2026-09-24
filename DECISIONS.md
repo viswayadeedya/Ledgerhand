@@ -1744,3 +1744,14 @@ scenario with a real run behind it, and nothing beyond that list.
   describes what the tests do, because "we looked and didn't see it" and
   "we broke it and nothing noticed" are different strengths of evidence and
   the write-up should not claim the stronger one while doing the weaker.
+
+### Closing the pass — README
+
+- **The root README is named as the single place the password is written
+  down**, and now says so explicitly, with the `$env:TELLER_PASSWORD` line
+  needed to run any reproduction command under `evidence/`. The scan's
+  no-exemptions rule only works if there is one sanctioned location and a
+  reader can find it.
+- **Both capabilities are listed, with the second's provenance up front.**
+  A reader finding two artifacts should not have to open them to learn that
+  one came from the LLM run and one from deterministic capture.
