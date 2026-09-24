@@ -1588,3 +1588,48 @@ scenario with a real run behind it, and nothing beyond that list.
 - **`--only` merges into the existing index rather than replacing it**, so
   re-running one scenario can't silently truncate the record the README is
   generated from.
+
+### Step 7 — a stability run that can actually fail
+
+- **`wrong_answers` is the headline, not the outcome histogram.** The
+  brief's optional stability signal is "replay N times and report
+  flakiness", but a tally of outcomes would record a run that returned
+  someone else's balance as a clean success -- the single worst thing this
+  system can do. Every value each run hands back is compared against the
+  fake app's seed template for the member actually requested, and that
+  count must be 0.
+- **Ground truth comes from `_TEMPLATE_MEMBERS`, not the live dict.** The
+  app runs in another process, and the template is the pristine state a
+  reset restores -- which is what every run starts from. Reading the live
+  values would mean checking the app against itself.
+- **`unexpected_outcomes` is the actual flakiness signal**, kept separate.
+  Each fault declares where it should land, and a deviation is the
+  interesting event. The raw histogram measures the *fault mix*, because
+  the variance is injected deliberately -- reporting it as a stability
+  number would be reporting the experiment's design as a result.
+- **A balanced shuffled schedule, not an independent draw per run.** The
+  first seeded 20-run pass produced eight `app_error`s and never fired
+  `popup`, `slow_load` or `duplicate_members` at all -- three of the
+  conditions the scoreboard claims to exercise never ran. Sampling with
+  replacement looks more random and is worse evidence. Order and member
+  stay unpredictable; coverage is guaranteed, and a test asserts it.
+- **The check is tested in both directions.** "0 wrong answers" would be
+  produced just as happily by a check that cannot fail, so there are tests
+  for a single substituted balance, a wholesale wrong record, and an empty
+  output set (a business outcome returns nothing, and nothing is not
+  incorrect -- counting it would bury the real signal under every
+  not-found run).
+- **Mismatches are reported masked with a shape hint.** The scoreboard is
+  committed; a correctness alarm has to be legible without putting the
+  figures it complains about on disk.
+- **The member ID is masked in the scoreboard too**, unlike in
+  `command.txt`. It costs nothing here -- the seeded members differ in
+  their last two digits, so `***01` and `***02` stay exactly as
+  distinguishable as the full IDs -- and claiming an exemption that buys
+  nothing is how exemptions accumulate.
+- **Closed member 10005 is excluded.** Its detail page has no balances, so
+  the checkpoint never matches and the run is a legitimate hard failure --
+  about account status rather than about the fault under test, and it would
+  sit in the scoreboard looking like instability.
+- **Reuses `run_evidence`'s app lifecycle and fault helpers by importing
+  it**, rather than copying the start/reset/arm logic into a second script.

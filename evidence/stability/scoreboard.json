@@ -1,0 +1,265 @@
+{
+  "seed": 1729,
+  "runs": 20,
+  "artifact": "member-savings-lookup",
+  "artifact_version": 4,
+  "wrong_answers": 0,
+  "unexpected_outcomes": 0,
+  "outcomes": {
+    "business_outcome": 4,
+    "hard_failure": 4,
+    "needs_human": 2,
+    "recovered": 4,
+    "success": 6
+  },
+  "reason_codes": {
+    "app_error": 2,
+    "identity_mismatch": 2
+  },
+  "faults": {
+    "app_error": 2,
+    "duplicate_members": 2,
+    "extra_row": 2,
+    "member_not_found": 2,
+    "none": 2,
+    "permission_denied": 2,
+    "popup": 2,
+    "session_expired": 2,
+    "slow_load": 2,
+    "wrong_member": 2
+  },
+  "recovery_kinds": {
+    "dialog_dismissed": 2,
+    "session_reauthenticated": 2
+  },
+  "runs_detail": [
+    {
+      "fault": "extra_row",
+      "member_id": "***03",
+      "outcome": "success",
+      "expected_outcome": "success",
+      "as_expected": true,
+      "reason_code": null,
+      "recovery": [],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "session_expired",
+      "member_id": "***04",
+      "outcome": "recovered",
+      "expected_outcome": "recovered",
+      "as_expected": true,
+      "reason_code": null,
+      "recovery": [
+        "session_reauthenticated"
+      ],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "slow_load",
+      "member_id": "***03",
+      "outcome": "success",
+      "expected_outcome": "success",
+      "as_expected": true,
+      "reason_code": null,
+      "recovery": [],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "wrong_member",
+      "member_id": "***04",
+      "outcome": "hard_failure",
+      "expected_outcome": "hard_failure",
+      "as_expected": true,
+      "reason_code": "identity_mismatch",
+      "recovery": [],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "app_error",
+      "member_id": "***03",
+      "outcome": "hard_failure",
+      "expected_outcome": "hard_failure",
+      "as_expected": true,
+      "reason_code": "app_error",
+      "recovery": [],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "member_not_found",
+      "member_id": "***02",
+      "outcome": "business_outcome",
+      "expected_outcome": "business_outcome",
+      "as_expected": true,
+      "reason_code": null,
+      "recovery": [],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "popup",
+      "member_id": "***04",
+      "outcome": "recovered",
+      "expected_outcome": "recovered",
+      "as_expected": true,
+      "reason_code": null,
+      "recovery": [
+        "dialog_dismissed"
+      ],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "duplicate_members",
+      "member_id": "***01",
+      "outcome": "needs_human",
+      "expected_outcome": "needs_human",
+      "as_expected": true,
+      "reason_code": null,
+      "recovery": [],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "permission_denied",
+      "member_id": "***01",
+      "outcome": "business_outcome",
+      "expected_outcome": "business_outcome",
+      "as_expected": true,
+      "reason_code": null,
+      "recovery": [],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "none",
+      "member_id": "***01",
+      "outcome": "success",
+      "expected_outcome": "success",
+      "as_expected": true,
+      "reason_code": null,
+      "recovery": [],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "duplicate_members",
+      "member_id": "***04",
+      "outcome": "needs_human",
+      "expected_outcome": "needs_human",
+      "as_expected": true,
+      "reason_code": null,
+      "recovery": [],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "popup",
+      "member_id": "***03",
+      "outcome": "recovered",
+      "expected_outcome": "recovered",
+      "as_expected": true,
+      "reason_code": null,
+      "recovery": [
+        "dialog_dismissed"
+      ],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "none",
+      "member_id": "***03",
+      "outcome": "success",
+      "expected_outcome": "success",
+      "as_expected": true,
+      "reason_code": null,
+      "recovery": [],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "wrong_member",
+      "member_id": "***01",
+      "outcome": "hard_failure",
+      "expected_outcome": "hard_failure",
+      "as_expected": true,
+      "reason_code": "identity_mismatch",
+      "recovery": [],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "app_error",
+      "member_id": "***03",
+      "outcome": "hard_failure",
+      "expected_outcome": "hard_failure",
+      "as_expected": true,
+      "reason_code": "app_error",
+      "recovery": [],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "member_not_found",
+      "member_id": "***04",
+      "outcome": "business_outcome",
+      "expected_outcome": "business_outcome",
+      "as_expected": true,
+      "reason_code": null,
+      "recovery": [],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "permission_denied",
+      "member_id": "***04",
+      "outcome": "business_outcome",
+      "expected_outcome": "business_outcome",
+      "as_expected": true,
+      "reason_code": null,
+      "recovery": [],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "session_expired",
+      "member_id": "***04",
+      "outcome": "recovered",
+      "expected_outcome": "recovered",
+      "as_expected": true,
+      "reason_code": null,
+      "recovery": [
+        "session_reauthenticated"
+      ],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "slow_load",
+      "member_id": "***04",
+      "outcome": "success",
+      "expected_outcome": "success",
+      "as_expected": true,
+      "reason_code": null,
+      "recovery": [],
+      "wrong_answer": false,
+      "mismatches": []
+    },
+    {
+      "fault": "extra_row",
+      "member_id": "***04",
+      "outcome": "success",
+      "expected_outcome": "success",
+      "as_expected": true,
+      "reason_code": null,
+      "recovery": [],
+      "wrong_answer": false,
+      "mismatches": []
+    }
+  ]
+}
