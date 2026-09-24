@@ -1,0 +1,7 @@
+Outcome: recovered
+Steps executed: 12/12
+Escalation: approve_and_retry -- Verified with the member in branch; approved opening the sub-account.
+Control: automation 2026-09-24T17:26:09.223533+00:00 -> 2026-09-24T17:26:14.416354+00:00 (replay started)
+Control: human 2026-09-24T17:26:14.416354+00:00 -> 2026-09-24T17:26:14.470537+00:00 (blocked by policy (click on role='Confirm & Open Account' in frame 'main'): route '/app/member/10001/new-subaccount/commit' is risky/irreversible and requires human approval)
+Control: automation 2026-09-24T17:26:14.470537+00:00 -> 2026-09-24T17:26:16.175985+00:00 (operator handed control back)
+Outputs: {"member_id": "***01 [shape: integer]", "sub_account_number": "*** [shape: integer]", "account_type": "checking", "initial_deposit": "***00 [shape: money]"}

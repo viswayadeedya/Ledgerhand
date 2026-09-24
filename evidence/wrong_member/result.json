@@ -1,0 +1,35 @@
+{
+  "recorded_at": "2026-09-24T17:26:02.366152+00:00",
+  "artifact_id": "member-savings-lookup",
+  "artifact_version": 4,
+  "inputs": {
+    "member_id": "***01 [shape: integer]"
+  },
+  "result": {
+    "outcome": "hard_failure",
+    "capability_id": "member-savings-lookup",
+    "outputs": {},
+    "sensitive_outputs": [],
+    "business_outcome": null,
+    "business_outcome_description": null,
+    "recovery_events": [],
+    "escalations": [],
+    "control_timeline": [
+      {
+        "holder": "automation",
+        "started_at": "2026-09-24T17:25:58.022138+00:00",
+        "ended_at": "2026-09-24T17:26:02.366152+00:00",
+        "reason": "replay started"
+      }
+    ],
+    "error": {
+      "reason_code": "identity_mismatch",
+      "step_index": null,
+      "expected": "output 'member_id' to equal '***01' (asserted by {{inputs.member_id}})",
+      "observed": "'***02'",
+      "message": "Identity check failed after 7 steps: the page's 'member_id' is '***02', but this run asked for '***01'. Refusing to return data that may belong to a different record.",
+      "screenshot_path": "C:\\Users\\viswa\\Documents\\Ledgerhand\\evidence\\runs\\wrong_member\\step_008.png"
+    },
+    "steps_executed": 7
+  }
+}

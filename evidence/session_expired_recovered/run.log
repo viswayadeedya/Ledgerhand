@@ -1,0 +1,13 @@
+
+Outcome: recovered
+Steps executed: 7/7
+Recovery events:
+  - step 4: session_reauthenticated (redirected to http://127.0.0.1:5055/login?expired=1)
+Outputs: {
+  "member_id": "***01 [shape: integer]",
+  "member_name": "***ia [shape: text]",
+  "savings_balance": "***18 [shape: money]",
+  "checking_balance": "***44 [shape: money]"
+}
+  (checking_balance, member_id, member_name, savings_balance masked -- pass --show-sensitive to print in full)
+Result written to C:\Users\viswa\Documents\Ledgerhand\evidence\session_expired_recovered\result.json

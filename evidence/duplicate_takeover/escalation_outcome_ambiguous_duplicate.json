@@ -1,0 +1,38 @@
+{
+  "capability_id": "member-savings-lookup",
+  "capability_title": "Look up a member's savings balance",
+  "step_index": null,
+  "reason": "outcome 'ambiguous_duplicate' requires human review: More than one member record matched; automation should not guess which one.",
+  "business_outcome": "ambiguous_duplicate",
+  "current_url": "http://127.0.0.1:5055/app",
+  "screenshot_path": "C:\\Users\\viswa\\Documents\\Ledgerhand\\evidence\\runs\\duplicate_takeover\\step_008.png",
+  "requested_at": "2026-09-24T17:26:08.604480+00:00",
+  "decision": {
+    "action": "manual_resolved",
+    "operator_note": "Reviewed both records and selected the genuine one."
+  },
+  "operator_actions": [
+    {
+      "at": "2026-09-24T17:26:08.674722+00:00",
+      "kind": "click",
+      "target": "a \"View\"",
+      "value": null,
+      "frame": "main",
+      "url": "http://127.0.0.1:5055/app/search?q=10001"
+    }
+  ],
+  "control_timeline": [
+    {
+      "holder": "human",
+      "started_at": "2026-09-24T17:26:08.604480+00:00",
+      "ended_at": "2026-09-24T17:26:08.682722+00:00",
+      "reason": "outcome 'ambiguous_duplicate' requires human review: More than one member record matched; automation should not guess which one."
+    },
+    {
+      "holder": "automation",
+      "started_at": "2026-09-24T17:26:08.682722+00:00",
+      "ended_at": null,
+      "reason": "operator handed control back"
+    }
+  ]
+}

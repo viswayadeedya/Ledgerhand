@@ -1,0 +1,6 @@
+Outcome: needs_human
+Steps executed: 6/7
+Escalation: abandon -- Two conflicting records and no way to tell which is right; declining to guess.
+Control: automation 2026-09-24T17:26:37.234301+00:00 -> 2026-09-24T17:26:41.614952+00:00 (replay started)
+Control: human 2026-09-24T17:26:41.614952+00:00 -> 2026-09-24T17:26:41.662016+00:00 (outcome 'ambiguous_duplicate' requires human review: More than one member record matched; automation should not guess which one.)
+Control: automation 2026-09-24T17:26:41.662016+00:00 -> 2026-09-24T17:26:41.759640+00:00 (operator handed control back)

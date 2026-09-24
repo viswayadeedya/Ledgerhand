@@ -1,0 +1,7 @@
+# Arm the condition first -- see this folder's row in evidence/README.md
+python scripts/run_evidence.py --only slow_load_timeout
+
+# which runs:
+python -m cua.replay --artifact "artifacts/member-savings-lookup.yaml" --input "member_id=10001" \
+  --secret "username=teller1" --secret "password=$env:TELLER_PASSWORD" \
+  --out "evidence/slow_load_timeout/result.json" --evidence-dir "evidence/runs/slow_load_timeout"

@@ -1,0 +1,61 @@
+{
+  "artifact_id": "member-subaccount-open",
+  "artifact_version": 1,
+  "inputs": {
+    "member_id": "***01 [shape: integer]",
+    "account_type": "checking",
+    "initial_deposit": "250.00"
+  },
+  "result": {
+    "outcome": "recovered",
+    "capability_id": "member-subaccount-open",
+    "outputs": {
+      "member_id": "***01 [shape: integer]",
+      "sub_account_number": "*** [shape: integer]",
+      "account_type": "checking",
+      "initial_deposit": "***00 [shape: money]"
+    },
+    "sensitive_outputs": [
+      "member_id",
+      "sub_account_number",
+      "initial_deposit"
+    ],
+    "business_outcome": null,
+    "business_outcome_description": null,
+    "recovery_events": [],
+    "escalations": [
+      {
+        "step_index": 11,
+        "reason": "blocked by policy (click on role='Confirm & Open Account' in frame 'main'): route '/app/member/10001/new-subaccount/commit' is risky/irreversible and requires human approval",
+        "decision": "approve_and_retry",
+        "operator_note": "Verified with the member in branch; approved opening the sub-account.",
+        "resumed_via": "MockOperatorHandoff",
+        "requested_at": "2026-09-24T17:26:14.416354+00:00",
+        "resolved_at": "2026-09-24T17:26:14.470537+00:00",
+        "operator_actions": []
+      }
+    ],
+    "control_timeline": [
+      {
+        "holder": "automation",
+        "started_at": "2026-09-24T17:26:09.223533+00:00",
+        "ended_at": "2026-09-24T17:26:14.416354+00:00",
+        "reason": "replay started"
+      },
+      {
+        "holder": "human",
+        "started_at": "2026-09-24T17:26:14.416354+00:00",
+        "ended_at": "2026-09-24T17:26:14.470537+00:00",
+        "reason": "blocked by policy (click on role='Confirm & Open Account' in frame 'main'): route '/app/member/10001/new-subaccount/commit' is risky/irreversible and requires human approval"
+      },
+      {
+        "holder": "automation",
+        "started_at": "2026-09-24T17:26:14.470537+00:00",
+        "ended_at": "2026-09-24T17:26:16.175985+00:00",
+        "reason": "operator handed control back"
+      }
+    ],
+    "error": null,
+    "steps_executed": 12
+  }
+}

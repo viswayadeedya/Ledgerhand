@@ -1,0 +1,6 @@
+python scripts/run_evidence.py --only not_found
+
+# which runs:
+python -m cua.replay --artifact "artifacts/member-savings-lookup.yaml" --input "member_id=99999" \
+  --secret "username=teller1" --secret "password=$env:TELLER_PASSWORD" \
+  --out "evidence/not_found/result.json" --evidence-dir "evidence/runs/not_found"

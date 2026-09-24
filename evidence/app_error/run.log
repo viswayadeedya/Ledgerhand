@@ -1,0 +1,9 @@
+
+Outcome: hard_failure
+Steps executed: 7/7
+Failure   : app_error (after all steps)
+  expected: /app/member/10001 to return a usable page
+  observed: HTTP 500 from /app/member/10001
+  detail  : The application returned HTTP 500. This is the app failing, not the request being wrong -- the same inputs may work later, but nothing here can decide that.
+  screen  : C:\Users\viswa\Documents\Ledgerhand\evidence\runs\app_error\step_008.png
+Result written to C:\Users\viswa\Documents\Ledgerhand\evidence\app_error\result.json

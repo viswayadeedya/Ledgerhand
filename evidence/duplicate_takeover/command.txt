@@ -1,0 +1,8 @@
+# Runs in-process: this scenario needs a programmable operator, and the CLI
+# deliberately offers only human handoff modes (--handoff terminal|interactive).
+python scripts/run_evidence.py --only duplicate_takeover
+
+# The equivalent interactive command, if you want to play the operator yourself:
+python -m cua.replay --artifact "artifacts/member-savings-lookup.yaml" --input "member_id=10001" \
+  --secret "username=teller1" --secret "password=$env:TELLER_PASSWORD" \
+  --handoff terminal

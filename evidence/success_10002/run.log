@@ -1,0 +1,11 @@
+
+Outcome: success
+Steps executed: 7/7
+Outputs: {
+  "member_id": "***02 [shape: integer]",
+  "member_name": "***ia [shape: text]",
+  "savings_balance": "***02 [shape: money]",
+  "checking_balance": "***00 [shape: money]"
+}
+  (checking_balance, member_id, member_name, savings_balance masked -- pass --show-sensitive to print in full)
+Result written to C:\Users\viswa\Documents\Ledgerhand\evidence\success_10002\result.json

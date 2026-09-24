@@ -1,0 +1,6 @@
+python scripts/run_evidence.py --only success_10001
+
+# which runs:
+python -m cua.replay --artifact "artifacts/member-savings-lookup.yaml" --input "member_id=10001" \
+  --secret "username=teller1" --secret "password=$env:TELLER_PASSWORD" \
+  --out "evidence/success_10001/result.json" --evidence-dir "evidence/runs/success_10001"

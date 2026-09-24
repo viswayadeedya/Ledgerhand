@@ -1,0 +1,38 @@
+{
+  "recorded_at": "2026-09-24T17:24:56.384724+00:00",
+  "artifact_id": "member-savings-lookup",
+  "artifact_version": 4,
+  "inputs": {
+    "member_id": "***02 [shape: integer]"
+  },
+  "result": {
+    "outcome": "success",
+    "capability_id": "member-savings-lookup",
+    "outputs": {
+      "member_id": "***02 [shape: integer]",
+      "member_name": "***ia [shape: text]",
+      "savings_balance": "***02 [shape: money]",
+      "checking_balance": "***00 [shape: money]"
+    },
+    "sensitive_outputs": [
+      "member_id",
+      "member_name",
+      "savings_balance",
+      "checking_balance"
+    ],
+    "business_outcome": null,
+    "business_outcome_description": null,
+    "recovery_events": [],
+    "escalations": [],
+    "control_timeline": [
+      {
+        "holder": "automation",
+        "started_at": "2026-09-24T17:24:52.806779+00:00",
+        "ended_at": "2026-09-24T17:24:56.384724+00:00",
+        "reason": "replay started"
+      }
+    ],
+    "error": null,
+    "steps_executed": 7
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "recorded_at": "2026-09-24T17:25:35.970456+00:00",
+  "artifact_id": "member-savings-lookup",
+  "artifact_version": 4,
+  "inputs": {
+    "member_id": "***01 [shape: integer]"
+  },
+  "result": {
+    "outcome": "hard_failure",
+    "capability_id": "member-savings-lookup",
+    "outputs": {},
+    "sensitive_outputs": [],
+    "business_outcome": null,
+    "business_outcome_description": null,
+    "recovery_events": [],
+    "escalations": [],
+    "control_timeline": [
+      {
+        "holder": "automation",
+        "started_at": "2026-09-24T17:25:16.524586+00:00",
+        "ended_at": "2026-09-24T17:25:35.969499+00:00",
+        "reason": "replay started"
+      }
+    ],
+    "error": {
+      "reason_code": "timeout",
+      "step_index": 6,
+      "expected": "click on role='View' in frame 'main'",
+      "observed": "no candidate resolved to exactly one element: role='View' -> matched nothing; text='View' -> matched nothing; table_position='row=1,col=4' -> matched nothing; css='table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(2) > td:nth-child(5) > a:nth-child(1)' -> matched nothing",
+      "message": "Step 6 failed: no candidate resolved to exactly one element: role='View' -> matched nothing; text='View' -> matched nothing; table_position='row=1,col=4' -> matched nothing; css='table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(2) > td:nth-child(5) > a:nth-child(1)' -> matched nothing",
+      "screenshot_path": "C:\\Users\\viswa\\Documents\\Ledgerhand\\evidence\\runs\\slow_load_timeout\\step_008.png"
+    },
+    "steps_executed": 6
+  }
+}

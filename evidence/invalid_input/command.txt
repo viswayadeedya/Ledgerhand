@@ -1,0 +1,6 @@
+python scripts/run_evidence.py --only invalid_input
+
+# which runs:
+python -m cua.replay --artifact "artifacts/member-savings-lookup.yaml" --input "member_id=abc" \
+  --secret "username=teller1" --secret "password=$env:TELLER_PASSWORD" \
+  --out "evidence/invalid_input/result.json" --evidence-dir "evidence/runs/invalid_input"

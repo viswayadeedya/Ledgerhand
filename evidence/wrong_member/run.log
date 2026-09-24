@@ -1,0 +1,9 @@
+
+Outcome: hard_failure
+Steps executed: 7/7
+Failure   : identity_mismatch (after all steps)
+  expected: output 'member_id' to equal '***01' (asserted by {{inputs.member_id}})
+  observed: '***02'
+  detail  : Identity check failed after 7 steps: the page's 'member_id' is '***02', but this run asked for '***01'. Refusing to return data that may belong to a different record.
+  screen  : C:\Users\viswa\Documents\Ledgerhand\evidence\runs\wrong_member\step_008.png
+Result written to C:\Users\viswa\Documents\Ledgerhand\evidence\wrong_member\result.json

@@ -1,0 +1,8 @@
+
+Outcome: hard_failure
+Steps executed: 0/7
+Failure   : input_invalid (after all steps)
+  expected: input 'member_id' to match ^[0-9]{5}$
+  observed: ***bc [shape: text]
+  detail  : Input 'member_id' was rejected before anything ran: it does not match the pattern this capability declares (^[0-9]{5}$). No browser was started.
+Result written to C:\Users\viswa\Documents\Ledgerhand\evidence\invalid_input\result.json

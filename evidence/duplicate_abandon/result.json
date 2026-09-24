@@ -1,0 +1,50 @@
+{
+  "artifact_id": "member-savings-lookup",
+  "artifact_version": 4,
+  "inputs": {
+    "member_id": "***01 [shape: integer]"
+  },
+  "result": {
+    "outcome": "needs_human",
+    "capability_id": "member-savings-lookup",
+    "outputs": {},
+    "sensitive_outputs": [],
+    "business_outcome": "ambiguous_duplicate",
+    "business_outcome_description": "More than one member record matched; automation should not guess which one.",
+    "recovery_events": [],
+    "escalations": [
+      {
+        "step_index": null,
+        "reason": "outcome 'ambiguous_duplicate' requires human review: More than one member record matched; automation should not guess which one.",
+        "decision": "abandon",
+        "operator_note": "Two conflicting records and no way to tell which is right; declining to guess.",
+        "resumed_via": "MockOperatorHandoff",
+        "requested_at": "2026-09-24T17:26:41.614952+00:00",
+        "resolved_at": "2026-09-24T17:26:41.662016+00:00",
+        "operator_actions": []
+      }
+    ],
+    "control_timeline": [
+      {
+        "holder": "automation",
+        "started_at": "2026-09-24T17:26:37.234301+00:00",
+        "ended_at": "2026-09-24T17:26:41.614952+00:00",
+        "reason": "replay started"
+      },
+      {
+        "holder": "human",
+        "started_at": "2026-09-24T17:26:41.614952+00:00",
+        "ended_at": "2026-09-24T17:26:41.662016+00:00",
+        "reason": "outcome 'ambiguous_duplicate' requires human review: More than one member record matched; automation should not guess which one."
+      },
+      {
+        "holder": "automation",
+        "started_at": "2026-09-24T17:26:41.662016+00:00",
+        "ended_at": "2026-09-24T17:26:41.759640+00:00",
+        "reason": "operator handed control back"
+      }
+    ],
+    "error": null,
+    "steps_executed": 6
+  }
+}

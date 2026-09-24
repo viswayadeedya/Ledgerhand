@@ -1,0 +1,28 @@
+{
+  "recorded_at": "2026-09-24T17:25:50.068141+00:00",
+  "artifact_id": "member-savings-lookup",
+  "artifact_version": 4,
+  "inputs": {
+    "member_id": "***01 [shape: integer]"
+  },
+  "result": {
+    "outcome": "business_outcome",
+    "capability_id": "member-savings-lookup",
+    "outputs": {},
+    "sensitive_outputs": [],
+    "business_outcome": "permission_denied",
+    "business_outcome_description": "The signed-in teller is not authorized to view this member's record.",
+    "recovery_events": [],
+    "escalations": [],
+    "control_timeline": [
+      {
+        "holder": "automation",
+        "started_at": "2026-09-24T17:25:36.621452+00:00",
+        "ended_at": "2026-09-24T17:25:50.068141+00:00",
+        "reason": "replay started"
+      }
+    ],
+    "error": null,
+    "steps_executed": 7
+  }
+}

@@ -1539,3 +1539,52 @@ scenario with a real run behind it, and nothing beyond that list.
   it, and was fixed before the first `git add`. No history rewrite was
   needed -- recorded because "we checked and it was clean" and "we didn't
   look" are indistinguishable afterwards otherwise.
+
+### Step 6 — one script, fourteen folders
+
+- **`scripts/run_evidence.py` replaces the hand-run scripts and the folders
+  they produced.** `evidence/replay-member-lookup/` and
+  `evidence/handoff-ambiguous-duplicate/` became five of the fourteen
+  scenarios, and `scripts/demo_handoff.py` was deleted rather than left
+  beside the runner producing the same two runs a second way.
+  `discovery-member-lookup/` stays: it is the required genuine LLM run, not
+  a replay scenario, and nothing here re-runs it. `extra_row/` stays frozen.
+- **Only the failure screenshot is committed.** The engine writes one per
+  step, and fourteen scenarios' worth would be about a hundred PNGs that
+  nobody opens. The per-step images go to the git-ignored scratch dir and
+  the run copies out `failure.png` -- the state the run actually ended in,
+  which is the one carrying information. This is also exactly what the
+  brief asks for ("at least one richer signal on failure").
+- **Eleven scenarios run the real CLI as a subprocess; three run
+  in-process.** The split is real and is written into each folder's
+  `command.txt` rather than smoothed over: the handoff scenarios need a
+  *programmable* operator, and the CLI deliberately offers only human modes
+  (`--handoff terminal|interactive`). Going through the CLI where possible
+  means the command in the folder is literally the command that ran and the
+  exit code is a real process exit status; the three in-process ones derive
+  theirs from the same `EXIT_CODES` table the CLI uses, and their
+  `command.txt` gives the interactive equivalent for a person who wants to
+  play the operator themselves.
+- **A fixed port (5055), not an ephemeral one.** The artifacts and the
+  guardrail allowlist both name it, and `command.txt` has to be something
+  someone can paste. The script reuses an app already listening there and
+  only shuts down one it started itself.
+- **The credential is parameterized in `command.txt`** as
+  `$env:TELLER_PASSWORD`, with the value documented in the top-level README
+  only. The real value is passed in argv to the subprocess and written down
+  nowhere under `evidence/`, so the step 9 scan can be absolute with no
+  exemption list.
+- **"Actual" is read back off `result.json`, never taken from the
+  scenario's expectation.** A table whose "actual" column is populated from
+  what the runner hoped for is a table that cannot disagree with itself,
+  which is the only thing it exists to do. The script exits non-zero when
+  any actual differs from its expected.
+- **That check earned its keep on the first full run.** `duplicate_abandon`
+  reported `needs_human ambiguous_duplicate` against an expected plain
+  `needs_human` -- the expectation was less precise than the behaviour, not
+  the other way round. The outcome name rides along on a NEEDS_HUMAN
+  because the run stopped *because of* a named business outcome and the
+  caller needs to know which. Fixed the expectation.
+- **`--only` merges into the existing index rather than replacing it**, so
+  re-running one scenario can't silently truncate the record the README is
+  generated from.

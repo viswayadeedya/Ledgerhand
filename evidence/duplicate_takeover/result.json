@@ -1,0 +1,69 @@
+{
+  "artifact_id": "member-savings-lookup",
+  "artifact_version": 4,
+  "inputs": {
+    "member_id": "***01 [shape: integer]"
+  },
+  "result": {
+    "outcome": "recovered",
+    "capability_id": "member-savings-lookup",
+    "outputs": {
+      "member_id": "***01 [shape: integer]",
+      "member_name": "***ia [shape: text]",
+      "savings_balance": "***18 [shape: money]",
+      "checking_balance": "***44 [shape: money]"
+    },
+    "sensitive_outputs": [
+      "member_id",
+      "member_name",
+      "savings_balance",
+      "checking_balance"
+    ],
+    "business_outcome": null,
+    "business_outcome_description": null,
+    "recovery_events": [],
+    "escalations": [
+      {
+        "step_index": null,
+        "reason": "outcome 'ambiguous_duplicate' requires human review: More than one member record matched; automation should not guess which one.",
+        "decision": "manual_resolved",
+        "operator_note": "Reviewed both records and selected the genuine one.",
+        "resumed_via": "MockOperatorHandoff",
+        "requested_at": "2026-09-24T17:26:08.604480+00:00",
+        "resolved_at": "2026-09-24T17:26:08.682722+00:00",
+        "operator_actions": [
+          {
+            "at": "2026-09-24T17:26:08.674722+00:00",
+            "kind": "click",
+            "target": "a \"View\"",
+            "value": null,
+            "frame": "main",
+            "url": "http://127.0.0.1:5055/app/search?q=10001"
+          }
+        ]
+      }
+    ],
+    "control_timeline": [
+      {
+        "holder": "automation",
+        "started_at": "2026-09-24T17:26:05.966191+00:00",
+        "ended_at": "2026-09-24T17:26:08.604480+00:00",
+        "reason": "replay started"
+      },
+      {
+        "holder": "human",
+        "started_at": "2026-09-24T17:26:08.604480+00:00",
+        "ended_at": "2026-09-24T17:26:08.682722+00:00",
+        "reason": "outcome 'ambiguous_duplicate' requires human review: More than one member record matched; automation should not guess which one."
+      },
+      {
+        "holder": "automation",
+        "started_at": "2026-09-24T17:26:08.682722+00:00",
+        "ended_at": "2026-09-24T17:26:08.811079+00:00",
+        "reason": "operator handed control back"
+      }
+    ],
+    "error": null,
+    "steps_executed": 6
+  }
+}

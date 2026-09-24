@@ -1,0 +1,5 @@
+
+Outcome: business_outcome
+Steps executed: 7/7
+Business outcome: permission_denied -- The signed-in teller is not authorized to view this member's record.
+Result written to C:\Users\viswa\Documents\Ledgerhand\evidence\permission_denied\result.json

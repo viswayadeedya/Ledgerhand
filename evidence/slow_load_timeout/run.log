@@ -1,0 +1,9 @@
+
+Outcome: hard_failure
+Steps executed: 6/7
+Failure   : timeout (step 6)
+  expected: click on role='View' in frame 'main'
+  observed: no candidate resolved to exactly one element: role='View' -> matched nothing; text='View' -> matched nothing; table_position='row=1,col=4' -> matched nothing; css='table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(2) > td:nth-child(5) > a:nth-child(1)' -> matched nothing
+  detail  : Step 6 failed: no candidate resolved to exactly one element: role='View' -> matched nothing; text='View' -> matched nothing; table_position='row=1,col=4' -> matched nothing; css='table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(2) > td:nth-child(5) > a:nth-child(1)' -> matched nothing
+  screen  : C:\Users\viswa\Documents\Ledgerhand\evidence\runs\slow_load_timeout\step_008.png
+Result written to C:\Users\viswa\Documents\Ledgerhand\evidence\slow_load_timeout\result.json

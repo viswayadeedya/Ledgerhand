@@ -1,0 +1,144 @@
+{
+  "scenarios": [
+    {
+      "scenario": "success_10001",
+      "brief": "3.3 replay + outputs",
+      "expected": "success",
+      "actual": "success",
+      "exit_code": 0,
+      "folder": "success_10001",
+      "mode": "cli",
+      "screenshot": null
+    },
+    {
+      "scenario": "success_10002",
+      "brief": "3.3 replay + outputs",
+      "expected": "success",
+      "actual": "success",
+      "exit_code": 0,
+      "folder": "success_10002",
+      "mode": "cli",
+      "screenshot": null
+    },
+    {
+      "scenario": "not_found",
+      "brief": "3.3 expected business outcome",
+      "expected": "business_outcome member_not_found",
+      "actual": "business_outcome member_not_found",
+      "exit_code": 2,
+      "folder": "not_found",
+      "mode": "cli",
+      "screenshot": null
+    },
+    {
+      "scenario": "invalid_input",
+      "brief": "3.3 validation error",
+      "expected": "hard_failure input_invalid",
+      "actual": "hard_failure input_invalid",
+      "exit_code": 1,
+      "folder": "invalid_input",
+      "mode": "cli",
+      "screenshot": null
+    },
+    {
+      "scenario": "popup_recovered",
+      "brief": "3.3 unexpected dialog",
+      "expected": "recovered",
+      "actual": "recovered",
+      "exit_code": 0,
+      "folder": "popup_recovered",
+      "mode": "cli",
+      "screenshot": null
+    },
+    {
+      "scenario": "session_expired_recovered",
+      "brief": "3.3 session timeout",
+      "expected": "recovered",
+      "actual": "recovered",
+      "exit_code": 0,
+      "folder": "session_expired_recovered",
+      "mode": "cli",
+      "screenshot": null
+    },
+    {
+      "scenario": "slow_load_ok",
+      "brief": "3.3 transient slowness",
+      "expected": "success",
+      "actual": "success",
+      "exit_code": 0,
+      "folder": "slow_load_ok",
+      "mode": "cli",
+      "screenshot": null
+    },
+    {
+      "scenario": "slow_load_timeout",
+      "brief": "3.3 slow/failed load",
+      "expected": "hard_failure timeout",
+      "actual": "hard_failure timeout",
+      "exit_code": 1,
+      "folder": "slow_load_timeout",
+      "mode": "cli",
+      "screenshot": "failure.png"
+    },
+    {
+      "scenario": "permission_denied",
+      "brief": "3.3 permission denial",
+      "expected": "business_outcome permission_denied",
+      "actual": "business_outcome permission_denied",
+      "exit_code": 2,
+      "folder": "permission_denied",
+      "mode": "cli",
+      "screenshot": null
+    },
+    {
+      "scenario": "app_error",
+      "brief": "3.3 / 1 app error",
+      "expected": "hard_failure app_error",
+      "actual": "hard_failure app_error",
+      "exit_code": 1,
+      "folder": "app_error",
+      "mode": "cli",
+      "screenshot": "failure.png"
+    },
+    {
+      "scenario": "wrong_member",
+      "brief": "3.3 hard failure (identity)",
+      "expected": "hard_failure identity_mismatch",
+      "actual": "hard_failure identity_mismatch",
+      "exit_code": 1,
+      "folder": "wrong_member",
+      "mode": "cli",
+      "screenshot": "failure.png"
+    },
+    {
+      "scenario": "duplicate_abandon",
+      "brief": "3.6 escalation",
+      "expected": "needs_human ambiguous_duplicate",
+      "actual": "needs_human ambiguous_duplicate",
+      "exit_code": 3,
+      "folder": "duplicate_abandon",
+      "mode": "in-process",
+      "screenshot": null
+    },
+    {
+      "scenario": "duplicate_takeover",
+      "brief": "3.6 take control of the live session",
+      "expected": "recovered",
+      "actual": "recovered",
+      "exit_code": 0,
+      "folder": "duplicate_takeover",
+      "mode": "in-process",
+      "screenshot": null
+    },
+    {
+      "scenario": "risky_step_approved",
+      "brief": "3.6 + 3.4 risky step approved",
+      "expected": "recovered",
+      "actual": "recovered",
+      "exit_code": 0,
+      "folder": "risky_step_approved",
+      "mode": "in-process",
+      "screenshot": null
+    }
+  ]
+}

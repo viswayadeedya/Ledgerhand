@@ -1,0 +1,28 @@
+{
+  "recorded_at": "2026-09-24T17:25:00.782711+00:00",
+  "artifact_id": "member-savings-lookup",
+  "artifact_version": 4,
+  "inputs": {
+    "member_id": "***bc [shape: text]"
+  },
+  "result": {
+    "outcome": "hard_failure",
+    "capability_id": "member-savings-lookup",
+    "outputs": {},
+    "sensitive_outputs": [],
+    "business_outcome": null,
+    "business_outcome_description": null,
+    "recovery_events": [],
+    "escalations": [],
+    "control_timeline": [],
+    "error": {
+      "reason_code": "input_invalid",
+      "step_index": null,
+      "expected": "input 'member_id' to match ^[0-9]{5}$",
+      "observed": "***bc [shape: text]",
+      "message": "Input 'member_id' was rejected before anything ran: it does not match the pattern this capability declares (^[0-9]{5}$). No browser was started.",
+      "screenshot_path": null
+    },
+    "steps_executed": 0
+  }
+}
