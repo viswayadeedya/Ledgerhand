@@ -62,6 +62,16 @@ def arm_fault(base_url: str, fault: str, armed: bool) -> None:
     urllib.request.urlopen(req)
 
 
+def set_setting(base_url: str, name: str, value: float) -> None:
+    req = urllib.request.Request(
+        f"{base_url}/admin/settings/api",
+        data=json.dumps({"name": name, "value": value}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    urllib.request.urlopen(req)
+
+
 def risky_artifact_for(base_url: str) -> "CapabilityArtifact":
     """A small synthetic artifact pointed straight at the sub-account commit
     route. Not the member-lookup capability -- its only job is to reach an

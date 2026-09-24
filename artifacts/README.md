@@ -54,10 +54,17 @@ LLM in the loop.
   expected state, asserted by a human when the artifact was built (not
   inferred). Same `Target` shape as everything else.
 - `business_outcomes` -- named, legitimate non-success endings (Part 6),
-  each with its own `detect` locator. `member-savings-lookup.yaml` has two:
-  `member_not_found` (a plain answer) and `ambiguous_duplicate`, marked
-  `requires_human: true` -- replay (with a handoff handler configured,
-  Part 7) escalates that one to a person instead of just reporting it.
+  each with its own `detect` locator. `member-savings-lookup.yaml` has
+  three: `member_not_found` and `permission_denied` (plain answers the
+  caller needs), and `ambiguous_duplicate`, marked `requires_human: true`
+  -- replay (with a handoff handler configured, Part 7) escalates that one
+  to a person instead of just reporting it.
+
+  Note what is *not* listed here: an app error. A 5xx is detected from the
+  response status rather than declared per capability, so every artifact
+  gets it for free and none has to describe its app's error pages. The
+  split is deliberate — a denial is the app answering, a 5xx is the app
+  failing to answer.
 - `provenance` -- when/which model discovered this, and a pointer back to
   the run log it came from, for audit.
 
@@ -97,7 +104,14 @@ python -m cua.artifacts \
 #    (deterministic exploration, not LLM discovery -- see each script's docstring)
 python scripts/capture_business_outcome.py
 python scripts/capture_ambiguous_duplicate_outcome.py
+python scripts/capture_permission_denied_outcome.py
 ```
+
+The capture scripts deliberately don't bump `version` themselves — three
+of them attaching three outcomes would carry one revision to 3, 4 and 5
+and make the number depend on how many outcomes an artifact happens to
+have. One regeneration pass is one revision: the build command in step 1
+carries it, and the scripts preserve it.
 
 Step 1 needs no API key and no browser -- it reads the run log off disk.
 That separation is deliberate: re-deriving an artifact should never need

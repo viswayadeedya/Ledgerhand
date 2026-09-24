@@ -29,6 +29,7 @@ class FailureReason(str, Enum):
     FORMAT_INVALID = "format_invalid"  # a value was found but doesn't look like what it should be
     ELEMENT_NOT_FOUND = "element_not_found"  # no locator candidate resolved
     TIMEOUT = "timeout"  # the surface gave up waiting
+    APP_ERROR = "app_error"  # the application returned 5xx; it failed, the request wasn't wrong
     UNRECOGNIZED_STATE = "unrecognized_state"  # neither checkpoint nor any known business outcome
     STEP_FAILED = "step_failed"  # a step failed for some other reason
     RECOVERY_FAILED = "recovery_failed"  # re-authentication or another recovery attempt didn't work
@@ -52,6 +53,18 @@ class ReplayError(BaseModel):
     expected: str
     observed: str
     message: str
+
+    screenshot_path: str | None = None
+    """The page as it stood when the run ended, for the failures where
+    prose isn't enough (Section 3.5's "richer signal on failure").
+
+    Filled once, centrally, at the end of the run rather than at each place
+    a failure is built: nothing happens between the failure and the close,
+    so it is the failing state either way, and one call can't drift from
+    the others. None when there was nothing to photograph -- an input
+    rejected before the browser opened, or a native dialog blocking the
+    render pipeline.
+    """
 
 
 class ReplayResult(BaseModel):

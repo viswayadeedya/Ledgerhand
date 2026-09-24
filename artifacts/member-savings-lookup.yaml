@@ -1,6 +1,6 @@
 schema_version: '1.2'
 id: member-savings-lookup
-version: 3
+version: 4
 title: Look up a member's savings balance
 description: Signs in to the teller system, searches for a member by ID, and reads
   their name and balances off the member detail page.
@@ -178,7 +178,14 @@ business_outcomes:
     - strategy: text
       value: Multiple members matched
   requires_human: true
+- name: permission_denied
+  description: The signed-in teller is not authorized to view this member's record.
+  detect:
+    frame: main
+    candidates:
+    - strategy: text
+      value: Access denied
 provenance:
-  discovered_at: '2026-09-24T05:04:24.372178+00:00'
+  discovered_at: '2026-09-24T05:12:39.463862+00:00'
   discovery_model: claude-sonnet-5
   source_run_log: evidence/discovery-member-lookup/run_log.json

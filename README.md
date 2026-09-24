@@ -178,6 +178,13 @@ python -m cua.replay --artifact "artifacts/member-savings-lookup.yaml" `
   --input "member_id=10001" --secret "username=teller1" --secret "password=teller123" `
   --handoff terminal
 ```
+Two more worth trying, because they end differently on purpose:
+`permission_denied` comes back as a **business outcome** (exit 2) — the app
+answered, the teller just isn't entitled to that record — while `app_error`
+comes back as a **hard failure** (exit 1) with the HTTP status it saw and a
+screenshot. Neither is recognised by reading the page; the status code
+decides.
+
 Replay hits a genuinely ambiguous result (two conflicting records), stops,
 and asks you right there in the terminal what to do -- approve, say you
 already fixed it manually, or abandon. Add `--headed` instead of

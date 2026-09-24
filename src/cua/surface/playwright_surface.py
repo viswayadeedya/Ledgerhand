@@ -45,10 +45,80 @@ class PlaywrightSurface(Surface):
         self.page: Page = self.context.new_page()
         self._pending_dialog: Dialog | None = None
         self.page.on("dialog", self._on_dialog)
+
+        # What the server said, kept per document URL rather than as "the
+        # last status": a frameset app has several documents in flight and
+        # the interesting one is rarely the most recent.
+        self._document_status: dict[str, int] = {}
+        # Document requests the server hasn't answered yet. This is the only
+        # honest signal for "a navigation is in flight": until the response
+        # arrives, the frame still holds its PREVIOUS document, which reports
+        # readyState 'complete' throughout.
+        self._inflight_documents: set[str] = set()
+        self.page.on("request", self._on_request)
+        self.page.on("response", self._on_response)
+        self.page.on("requestfailed", self._on_request_settled)
         self._step = 0
 
     def _on_dialog(self, dialog: Dialog) -> None:
         self._pending_dialog = dialog
+
+    def _on_request(self, request) -> None:
+        if request.resource_type == "document":
+            self._inflight_documents.add(request.url)
+
+    def _on_response(self, response) -> None:
+        if response.request.resource_type == "document":
+            self._document_status[response.url] = response.status
+            self._inflight_documents.discard(response.request.url)
+
+    def _on_request_settled(self, request) -> None:
+        if request.resource_type == "document":
+            self._inflight_documents.discard(request.url)
+
+    def failing_document(self) -> tuple[str, int] | None:
+        """A currently-displayed document the server answered with 5xx.
+
+        Scoped to what's on screen right now, not to whatever 5xx happened
+        at some point during the run -- a page that failed and was then
+        navigated away from is history, not the current state.
+
+        Structural, in the same sense as `error_kind`: an app that has
+        fallen over says so in its status line, so nothing here has to
+        recognise the wording of an error page, and rewording one changes
+        nothing.
+        """
+        for url in [self.page.url, *(f.url for f in self.page.frames)]:
+            status = self._document_status.get(url)
+            if status is not None and status >= 500:
+                return url, status
+        return None
+
+    def is_navigating(self, frame_name: str | None = None) -> bool:
+        """Whether the page is still coming, as opposed to not having what
+        we're looking for.
+
+        The two are indistinguishable from a locator's point of view -- both
+        are "no element matched" -- and they need opposite responses: wait
+        longer versus stop and report. Checked two ways because neither
+        covers the whole of a load: an unanswered document request catches
+        the server still thinking (when the old document is still on screen,
+        reporting readyState 'complete' the entire time), and readyState
+        catches the parse/subresource phase after the bytes arrive.
+
+        Known limit: a page that fetches its data in the background after
+        load reports 'complete' with nothing on it yet, so a slow load of
+        *that* shape is still reported as a missing element. See REPORT.md.
+        """
+        if self._inflight_documents:
+            return True
+        try:
+            scope = self.scope_for(frame_name)
+            return scope.evaluate("document.readyState") != "complete"
+        except Exception:
+            # A frame that isn't there to be asked is not evidence of a
+            # load in progress; let the caller report what it actually saw.
+            return False
 
     # ---- observation --------------------------------------------------
 
@@ -114,7 +184,13 @@ class PlaywrightSurface(Surface):
         try:
             return handler(action, human_approved)
         except LocatorResolutionError as exc:
-            return ActionResult(success=False, error=str(exc), error_kind="locator_not_found")
+            # A locator that ran out its budget while the page was still on
+            # its way is a timeout, not a missing element. Reported as
+            # "locator_not_found" it sends whoever reads the failure to
+            # inspect a selector that is perfectly correct.
+            frame = action.target.frame if action.target is not None else None
+            kind = "timeout" if self.is_navigating(frame) else "locator_not_found"
+            return ActionResult(success=False, error=str(exc), error_kind=kind)
         except PlaywrightTimeoutError as exc:
             return ActionResult(success=False, error=str(exc), error_kind="timeout")
         except Exception as exc:

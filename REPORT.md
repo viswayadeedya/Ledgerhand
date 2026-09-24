@@ -102,6 +102,31 @@ correctness emergency.
 | Business outcomes checked proactively *and* reactively | A robust locator's fallback chain could otherwise succeed straight *through* an outcome that should have stopped the run |
 | Waiting bounded two ways: instant check, bounded poll | Instant where strict single-match semantics are needed; poll where cross-frame navigation needs wall-clock time. Both were bugs first (DECISIONS.md, Part 6) |
 | UI drift: ranked fallback, then loud failure | Secondary to runtime errors per the brief. A restructured page isn't self-healing; `HARD_FAILURE` names the failing candidate — the signal to re-run discovery |
+| Permission denial vs. app error judged by HTTP status, not page text | A 403 is the app answering a question it understood (a business outcome); a 5xx is it failing to answer (`app_error`). Structural, so rewording either page changes nothing |
+| "Still loading" separated from "not there" before reporting a locator failure | Both arrive as "no element matched" and need opposite responses. An in-flight document request catches the server still thinking; `document.readyState` catches the parse phase after |
+
+**Two limits worth naming.**
+
+*Status codes aren't universal.* Judging denials and app errors from the
+status line is right here and would not be sufficient in production: plenty
+of legacy apps answer `200 OK` and put "Access denied" or a stack trace in
+the page body, because the error is rendered by the application rather than
+signalled by the transport. Those would need per-app *text* detection
+declared in the artifact — the same `detect` locator shape
+`business_outcomes` already uses, plus an equivalent for the failure side
+so a recognised error page can be a `HARD_FAILURE` rather than a business
+outcome. The status check would stay as the free, capability-independent
+default, with declared text as the per-app override. Not built here: the
+fake app signals honestly, so building it would mean shipping a mechanism
+with no real case behind it.
+
+*The load check reads the document's progress.* A page that returns quickly
+and then fetches its data in the background reports `readyState: complete`
+with nothing on it yet, so a slow load of that shape is still reported as
+`element_not_found` rather than `timeout`. That degrades toward the old
+behaviour rather than toward a wrong answer, but a heavily client-rendered
+surface would need a second signal (a pending-XHR count, or an app-specific
+"ready" marker) for it to stay useful.
 
 ## 4. Heterogeneity & multi-tenant
 

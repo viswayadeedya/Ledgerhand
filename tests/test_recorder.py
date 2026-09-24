@@ -538,7 +538,7 @@ def test_the_shipped_artifact_declares_a_member_id_pattern_and_a_fake_example():
 def test_the_shipped_artifact_is_at_the_current_schema():
     shipped = _shipped()
     assert shipped["schema_version"] == CURRENT_SCHEMA_VERSION
-    assert shipped["version"] == 3  # the capability's own revision, not the schema's
+    assert shipped["version"] == 4  # the capability's own revision, not the schema's
 
 
 def test_an_older_artifact_still_loads_but_says_what_it_is_missing():

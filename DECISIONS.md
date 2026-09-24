@@ -1234,3 +1234,80 @@ scenario with a real run behind it, and nothing beyond that list.
   lines and the version came back byte-identical from the same run log,
   which is a small standing check that recording stays deterministic and
   that no discovery-time literal has crept back in.
+
+### Step 3 — the permission denial, the app error, and the slow load that doesn't finish
+
+- **Both new conditions are classified by HTTP status, never by page
+  text.** A 403 is the app answering a question it understood -- the teller
+  isn't entitled to this record, the caller needs to know, and retrying
+  will not change it, which is precisely a business outcome. A 5xx is the
+  app failing to answer at all: nothing about the request was wrong, the
+  same inputs might work later, and nothing in replay can decide that, so
+  it stops. Judging that from a status line means no wording is
+  pattern-matched and rewording either page changes nothing -- the same
+  argument as Phase 1's `error_kind`.
+- **`app_error` needed no artifact field.** The alternative was declaring
+  error pages on the artifact the way business outcomes are declared, which
+  would have meant every capability re-describing the same thing and a new
+  schema concept for "a detected state that is a failure". The status code
+  is already there, already generic, and already right for capabilities
+  nobody has written yet.
+- **Only a *currently displayed* 5xx counts.** `failing_document()` matches
+  the recorded statuses against the URLs the page and its frames hold right
+  now, so a page that failed and was navigated away from is history rather
+  than a verdict on the current state.
+- **Checked before business outcomes, and on a failed step as well as at
+  the ending.** If the app says it fell over, that outranks pattern-matching
+  its page; and a step that failed against a 500 failed *because* the app is
+  down -- reported as `element_not_found` it would send someone to check a
+  locator that is fine.
+- **"Still loading" is distinguished from "not there" by two signals, and
+  the obvious one alone was wrong.** `document.readyState` looks like the
+  whole answer and isn't: while a navigation is in flight the frame still
+  holds its *previous* document, which reports `complete` the entire time
+  the server is thinking -- exactly our slow-load case. The load is only
+  visible as an unanswered document request. readyState still earns its
+  place for the parse/subresource phase after the bytes arrive, so both are
+  checked.
+- **Documented limit rather than a silent one:** a page that returns fast
+  and fetches its data in the background reports `complete` with nothing on
+  it, so that shape of slow load still reads as `element_not_found`. It
+  degrades toward the old behaviour, not toward a wrong answer. Noted in
+  REPORT.md Section 3.
+- **A test for the *other* direction.** Classifying a timeout is only worth
+  anything if a genuinely missing element still says so -- otherwise this is
+  a relabelling of every failure. Both directions are asserted.
+- **The failure screenshot is taken once, centrally, in `run()`'s
+  `finally`.** There are about eight places a HARD_FAILURE is constructed;
+  threading a screenshot through all of them would have been eight chances
+  to forget one. Nothing happens between the failure and the browser
+  closing, so the last moment before `close()` *is* the failing state. It is
+  skipped while a native dialog is open (Part 3's render-pipeline hang) and
+  can never turn a reportable failure into a crash -- a missing picture is a
+  worse result, not a different one.
+- **A real pre-existing bug, found while restructuring for that:
+  `_resolve_ending` was called from inside a sibling `except` clause.**
+  `except _SkipToEnding: result = self._resolve_ending(ctx)` -- an exception
+  raised there does *not* reach the sibling `except _ReplayEnd`, so a human
+  who resolved a handoff and then landed somewhere unrecognised got an
+  internal control-flow exception out of `run()` instead of a HARD_FAILURE.
+  Fixed by nesting, so `_resolve_ending` is always inside the try that
+  catches it. Exactly the interaction this step would have hit: an app error
+  after a handoff.
+- **Artifact version 4, one bump for the whole regeneration.** The capture
+  scripts deliberately don't bump it themselves -- three scripts attaching
+  three outcomes would take one revision to 3, 4 and 5 and make the number
+  depend on how many outcomes an artifact happens to have. One pass, one
+  revision; the build command carries the version and the scripts preserve
+  it.
+- **Status-code detection is the default, not the whole answer.** Recorded
+  as a limit rather than built: plenty of legacy apps answer `200 OK` and
+  put "Access denied" or a stack trace in the body, because the error is
+  rendered by the application rather than signalled by the transport. Those
+  need per-app *text* detection declared on the artifact -- the `detect`
+  locator shape `business_outcomes` already has, plus an equivalent on the
+  failure side so a recognised error page can be a HARD_FAILURE rather than
+  a business outcome. Building that now would mean shipping a mechanism
+  with no real case behind it, since the fake app signals honestly; the
+  status check is the capability-independent default it would override.
+  REPORT.md Section 3.

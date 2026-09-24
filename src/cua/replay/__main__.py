@@ -132,6 +132,8 @@ def main() -> int:
         print(f"  expected: {result.error.expected}")
         print(f"  observed: {result.error.observed}")
         print(f"  detail  : {result.error.message}")
+        if result.error.screenshot_path:
+            print(f"  screen  : {result.error.screenshot_path}")
 
     if args.out:
         # Always masked, no flag. --show-sensitive is about what a person

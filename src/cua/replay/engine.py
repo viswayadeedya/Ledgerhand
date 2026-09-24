@@ -106,16 +106,31 @@ class ReplayEngine:
         ctx.rendered_steps = [render_action(a, inputs, secrets) for a in artifact.steps]
 
         steps_executed = 0
+        result: ReplayResult | None = None
         try:
-            for idx, action in enumerate(ctx.rendered_steps):
-                self._execute_step(ctx, idx, action)
-                steps_executed = idx + 1
-            result = self._resolve_ending(ctx)
-        except _SkipToEnding:
+            # Nested rather than a sibling `except _SkipToEnding`, so that
+            # _resolve_ending is always inside the try that catches
+            # _ReplayEnd. Raised from a sibling except clause it would have
+            # escaped run() entirely -- an internal control-flow exception
+            # reaching the caller instead of a HARD_FAILURE -- which is what
+            # happened when a human resolved a handoff and the page then
+            # turned out to be in a state nothing recognised.
+            try:
+                for idx, action in enumerate(ctx.rendered_steps):
+                    self._execute_step(ctx, idx, action)
+                    steps_executed = idx + 1
+            except _SkipToEnding:
+                pass
             result = self._resolve_ending(ctx)
         except _ReplayEnd as end:
             result = end.result
         finally:
+            # Taken here rather than at each of the ~eight places a failure
+            # is constructed: this is the last moment before the browser
+            # closes and nothing has happened since the failure, so it is
+            # the failing state, and one call can't drift from seven others.
+            if result is not None and result.error is not None:
+                result.error.screenshot_path = _failure_screenshot(surface)
             surface.close()
 
         result.steps_executed = steps_executed
@@ -261,6 +276,11 @@ class ReplayEngine:
 
             break  # nothing recoverable matched
 
+        # A step that failed against a 5xx page failed *because* the app is
+        # down. Reported as "element not found" it would send someone to
+        # check a locator that is fine.
+        self._check_app_error(ctx, step_index=idx)
+
         # A step can legitimately fail to resolve because the flow diverged
         # onto a known business outcome mid-way -- e.g. there's no "View"
         # result to click because the search came back empty. Check before
@@ -360,6 +380,11 @@ class ReplayEngine:
                 sensitive_outputs=[s.name for s in ctx.artifact.outputs if s.sensitive],
             )
 
+        # Before pattern-matching the page: if the app said it fell over,
+        # that is the answer, and no amount of reading its error page will
+        # improve on the status line it came with.
+        self._check_app_error(ctx, step_index=None)
+
         outcome_result = self._check_business_outcomes(ctx)
         if outcome_result is not None:
             return outcome_result
@@ -441,6 +466,38 @@ class ReplayEngine:
                         f"Output '{spec.name}' was read as {shown!r}, which does not look like "
                         f"{spec.type.value}. Refusing to return it -- the locator resolved, but to "
                         f"something that isn't the value it claims to be."
+                    ),
+                ),
+            )
+        )
+
+    def _check_app_error(self, ctx: _RunContext, step_index: int | None) -> None:
+        """Ends the run if a document currently on screen came back 5xx.
+
+        The counterpart to a permission denial, and the reason both are
+        judged by status code rather than by page text: a 403 is the app
+        answering a question it understood -- a real result the caller needs
+        -- while a 5xx is the app failing to answer at all. Nothing here can
+        tell whether retrying would help, so it stops and says exactly what
+        it saw.
+        """
+        failing = ctx.surface.failing_document()
+        if failing is None:
+            return
+        url, status = failing
+        raise _ReplayEnd(
+            ReplayResult(
+                outcome=ReplayOutcome.HARD_FAILURE,
+                capability_id=ctx.artifact.id,
+                error=ReplayError(
+                    reason_code=FailureReason.APP_ERROR,
+                    step_index=step_index,
+                    expected=f"{urlsplit(url).path} to return a usable page",
+                    observed=f"HTTP {status} from {urlsplit(url).path}",
+                    message=(
+                        f"The application returned HTTP {status}. This is the app failing, not the "
+                        f"request being wrong -- the same inputs may work later, but nothing here can "
+                        f"decide that."
                     ),
                 ),
             )
@@ -573,6 +630,23 @@ def _check_input_patterns(artifact: CapabilityArtifact, inputs: dict[str, str]) 
 def _safe_observe(surface: PlaywrightSurface):
     try:
         return surface.observe()
+    except Exception:
+        return None
+
+
+def _failure_screenshot(surface: PlaywrightSurface) -> str | None:
+    """The brief's "at least one richer signal on failure" (Section 3.5).
+
+    Skipped while a native dialog is open, for the reason found in Part 3:
+    a pending dialog blocks the page's render pipeline and screenshot()
+    waits on it forever. Never allowed to turn a reportable failure into a
+    crash -- a missing picture is a worse result, not a different one.
+    """
+    if surface._pending_dialog is not None:
+        return None
+    try:
+        _data, path = surface.capture_screenshot()
+        return path
     except Exception:
         return None
 

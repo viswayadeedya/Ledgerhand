@@ -10,6 +10,7 @@ from cua.replay.engine import ReplayEngine
 from cua.replay.models import FailureReason, ReplayOutcome
 from tests.conftest import arm_fault as _arm_fault
 from tests.conftest import risky_artifact_for as _risky_artifact_for
+from tests.conftest import set_setting as _set_setting
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ARTIFACT_PATH = REPO_ROOT / "artifacts" / "member-savings-lookup.yaml"
@@ -146,6 +147,95 @@ def test_replay_hard_failure_has_debuggable_detail(engine, artifact):
     assert result.error is not None
     assert result.error.step_index == 1
     assert "This Button Does Not Exist" in result.error.expected
+
+
+def test_permission_denial_is_a_business_outcome_not_a_failure(engine, artifact, fake_app_server):
+    """The app understood the request and answered it: this teller isn't
+    entitled to this record. Retrying won't change that, so the caller
+    needs it as an answer, not as an error to debug.
+    """
+    _arm_fault(fake_app_server, "permission_denied", True)
+    result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
+
+    assert result.outcome == ReplayOutcome.BUSINESS_OUTCOME
+    assert result.business_outcome == "permission_denied"
+    assert result.error is None
+    assert not result.outputs  # no data leaks out of a record we weren't allowed to read
+
+
+def test_app_error_is_a_hard_failure_with_the_status_it_saw(engine, artifact, fake_app_server):
+    """The counterpart to the denial above, and the reason both are judged
+    by status code: a 5xx is the app failing to answer at all.
+    """
+    _arm_fault(fake_app_server, "app_error", True)
+    result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
+
+    assert result.outcome == ReplayOutcome.HARD_FAILURE
+    assert result.error.reason_code == FailureReason.APP_ERROR
+    assert "500" in result.error.observed
+    assert result.error.screenshot_path is not None
+    assert Path(result.error.screenshot_path).exists()
+
+
+def test_app_error_is_not_reported_as_an_unrecognized_state(engine, artifact, fake_app_server):
+    """The distinction the status code buys. Without it a 500 page is just
+    a page that matches neither the checkpoint nor any business outcome,
+    and the failure says "I don't know where I am" when the app in fact
+    said exactly what went wrong.
+    """
+    _arm_fault(fake_app_server, "app_error", True)
+    result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
+    assert result.error.reason_code != FailureReason.UNRECOGNIZED_STATE
+
+
+def test_a_slow_load_inside_the_wait_budget_is_ridden_out(engine, artifact, fake_app_server):
+    _set_setting(fake_app_server, "slow_load_seconds", 2)
+    _arm_fault(fake_app_server, "slow_load", True)
+    result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
+
+    assert result.outcome == ReplayOutcome.SUCCESS
+    assert result.outputs["savings_balance"] == "$2340.18"
+
+
+def test_a_slow_load_past_the_wait_budget_is_a_timeout_not_a_missing_element(
+    engine, artifact, fake_app_server
+):
+    """The same fault, past the budget. What's under test is the reason
+    code: both failures arrive as "no element matched", but "the page is
+    still coming" and "the element isn't there" need opposite responses,
+    and element_not_found sends whoever reads it to inspect a locator that
+    is perfectly correct.
+    """
+    _set_setting(fake_app_server, "slow_load_seconds", 12)
+    _arm_fault(fake_app_server, "slow_load", True)
+    result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
+
+    assert result.outcome == ReplayOutcome.HARD_FAILURE
+    assert result.error.reason_code == FailureReason.TIMEOUT
+    assert result.error.step_index is not None  # which step was waiting
+    assert result.error.screenshot_path is not None
+
+
+def test_a_genuinely_missing_element_is_still_element_not_found(engine, artifact):
+    """The other side of the readyState check: with nothing loading, a
+    locator that can't resolve must keep reporting itself as such, or the
+    timeout classification would just be a relabelling of every failure.
+    """
+    broken = artifact.model_copy(
+        update={
+            "steps": [
+                artifact.steps[0],
+                Action(
+                    type=ActionType.CLICK,
+                    target=Target(
+                        candidates=[LocatorCandidate(strategy=LocatorStrategy.TEXT, value="No Such Control")]
+                    ),
+                ),
+            ]
+        }
+    )
+    result = engine.run(broken, inputs={"member_id": "10001"}, secrets=SECRETS)
+    assert result.error.reason_code == FailureReason.ELEMENT_NOT_FOUND
 
 
 def _without_label_anchors(artifact: CapabilityArtifact) -> CapabilityArtifact:
