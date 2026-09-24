@@ -6,6 +6,7 @@ production -- reliable and cheap because there's no model call per step.
 
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -13,8 +14,17 @@ from cua.artifacts.schema import CapabilityArtifact, OutputSpec, Target, format_
 from cua.core.models import Action, ActionResult, ActionType
 from cua.guardrails.policy import PolicyEngine
 from cua.guardrails.redact import mask_partial
+from cua.handoff.evidence import append_operator_record
 from cua.handoff.handler import HandoffHandler
-from cua.handoff.models import EscalationRecord, EscalationRequest, HandoffAction, HandoffDecision
+from cua.handoff.models import (
+    ControlHolder,
+    ControlSpan,
+    EscalationRecord,
+    EscalationRequest,
+    HandoffAction,
+    HandoffDecision,
+)
+from cua.handoff.recorder import OperatorSession
 from cua.replay.models import FailureReason, RecoveryEvent, ReplayError, ReplayOutcome, ReplayResult
 from cua.replay.render import RenderError, render_action, render_value
 from cua.surface.locator import LocatorResolutionError, resolve_with_wait
@@ -53,6 +63,7 @@ class _RunContext:
     recovery_events: list[RecoveryEvent] = field(default_factory=list)
     escalations: list[EscalationRecord] = field(default_factory=list)
     escalated_outcomes: set[str] = field(default_factory=set)
+    control_timeline: list[ControlSpan] = field(default_factory=list)
 
 
 class ReplayEngine:
@@ -104,6 +115,7 @@ class ReplayEngine:
             handoff=self.handoff,
         )
         ctx.rendered_steps = [render_action(a, inputs, secrets) for a in artifact.steps]
+        _take_control(ctx, ControlHolder.AUTOMATION, "replay started")
 
         steps_executed = 0
         result: ReplayResult | None = None
@@ -133,9 +145,11 @@ class ReplayEngine:
                 result.error.screenshot_path = _failure_screenshot(surface)
             surface.close()
 
+        _close_control(ctx, "run ended")
         result.steps_executed = steps_executed
         result.recovery_events = ctx.recovery_events
         result.escalations = ctx.escalations
+        result.control_timeline = ctx.control_timeline
         return result
 
     # -- human handoff -----------------------------------------------------
@@ -157,16 +171,39 @@ class ReplayEngine:
             current_url=observation.url if observation else ctx.surface.page.url,
             screenshot_path=observation.screenshot_path if observation else None,
         )
-        decision = ctx.handoff.escalate(request, ctx.surface)
-        ctx.escalations.append(
-            EscalationRecord(
-                step_index=step_index,
-                reason=reason,
-                decision=decision.action,
-                operator_note=decision.operator_note,
-                resumed_via=type(ctx.handoff).__name__,
-                requested_at=request.requested_at,
-            )
+        # The control transfer, made literal. The span opens before
+        # escalate() is called and closes after it returns, which is
+        # exactly the window in which this loop touches nothing -- so the
+        # timeline isn't a description of the handoff, it's a recording of
+        # the same fact the call stack already enforces.
+        _take_control(ctx, ControlHolder.HUMAN, reason)
+        with OperatorSession(ctx.surface) as session:
+            try:
+                decision = ctx.handoff.escalate(request, ctx.surface)
+            finally:
+                _take_control(ctx, ControlHolder.AUTOMATION, "operator handed control back")
+
+        record = EscalationRecord(
+            step_index=step_index,
+            reason=reason,
+            decision=decision.action,
+            operator_note=decision.operator_note,
+            resumed_via=type(ctx.handoff).__name__,
+            requested_at=request.requested_at,
+            operator_actions=session.actions,
+        )
+        ctx.escalations.append(record)
+
+        # Also onto the escalation file the handler wrote, so the
+        # intervention request and its answer stay one document -- that
+        # file is what a reviewer opens, and "what did they actually do"
+        # belongs next to "what were they asked".
+        append_operator_record(
+            getattr(ctx.handoff, "evidence_dir", self.evidence_dir),
+            request,
+            actions=session.actions,
+            spans=ctx.control_timeline[-2:],
+            capture_error=session.capture_error,
         )
         return decision
 
@@ -570,6 +607,24 @@ def _validate_params(artifact: CapabilityArtifact, inputs: dict[str, str], secre
             render_value(spec.must_equal, inputs, secrets)
         except RenderError as exc:
             raise ValueError(f"output '{spec.name}' has an unresolvable must_equal ({spec.must_equal}): {exc}") from exc
+
+
+def _take_control(ctx: _RunContext, holder: ControlHolder, reason: str) -> None:
+    """Closes whoever held the session and opens a span for the new holder.
+
+    One function for both directions so a span can't be opened without the
+    previous one being closed -- the failure mode being a timeline that
+    claims two parties held control at once.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    if ctx.control_timeline:
+        ctx.control_timeline[-1].ended_at = now
+    ctx.control_timeline.append(ControlSpan(holder=holder, started_at=now, reason=reason))
+
+
+def _close_control(ctx: _RunContext, reason: str) -> None:
+    if ctx.control_timeline and ctx.control_timeline[-1].ended_at is None:
+        ctx.control_timeline[-1].ended_at = datetime.now(timezone.utc).isoformat()
 
 
 def _check_input_patterns(artifact: CapabilityArtifact, inputs: dict[str, str]) -> ReplayResult | None:

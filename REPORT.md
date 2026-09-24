@@ -175,6 +175,47 @@ end: a test and matching evidence have the operator click a real "View"
 link on the live session, then replay resumes and reads the *correct*
 member's balance.
 
+**Who was in control, and what they did.** Every run carries a
+`control_timeline` of contiguous spans (`automation` → `human` →
+`automation`), each with a holder, a reason and both endpoints. A run
+nobody touched is one uninterrupted automation span — "nobody took over"
+and "we didn't track it" have to look different. The spans open and close
+around the `escalate()` call itself, so the timeline records the same fact
+the call stack already enforces rather than describing it separately.
+
+The operator's actions are captured from the **page**, not from a wrapper
+API: a capture-phase listener injected into every frame reports clicks and
+field changes back through an exposed binding. That choice is what makes
+one mechanism cover both modes — a wrapper would have recorded every
+handler that is code and recorded nothing for `InteractivePauseHandoff`,
+the one mode where a real person is genuinely at the wheel. Values are
+masked on the way in (`***02`), and a password is never sent out of the
+page at all, following the Part 4 rule that a value a scan can reach is a
+value someone eventually forgets to redact. A capture failure is recorded
+explicitly, so an empty action list always means "they did nothing".
+Clicks, field changes, form submits and Enter presses are all captured — an
+operator who types and hits Enter never clicks anything, so clicks alone
+would have shown them doing nothing — and the listener survives the
+operator navigating, which is the first thing a person taking over a stuck
+run usually does.
+
+**What page-level recording cannot see.** It observes the *document*, so
+anything the operator does to the browser rather than to the page is
+invisible to it: back/forward navigation, typing a URL into the address
+bar, opening a new tab, and native dialogs (`confirm`/`alert`, file
+pickers, basic-auth prompts), which are chrome rather than DOM and fire no
+page events. Some of that is partly recoverable — a `framenavigated`
+listener catches the *result* of a back button or an address-bar jump as a
+`navigate` entry, so the record shows where they ended up but not how they
+got there — and a native dialog is at least visible to Playwright's own
+`dialog` event, which the surface already tracks for other reasons. The
+honest summary is that the action log is a faithful record of what happened
+*to the page* and an incomplete record of what the operator did. For an
+audit trail that has to be complete, the browser-level events would need
+capturing too (CDP `Page.frameNavigated` with a transition type, plus the
+dialog handler feeding the same log), which is a bigger seam than this
+project needs.
+
 ## 6. Safety
 
 | Control | Reason |

@@ -2,7 +2,7 @@ from enum import Enum
 
 from pydantic import BaseModel
 
-from cua.handoff.models import EscalationRecord
+from cua.handoff.models import ControlSpan, EscalationRecord
 
 
 class ReplayOutcome(str, Enum):
@@ -81,5 +81,14 @@ class ReplayResult(BaseModel):
     business_outcome_description: str | None = None
     recovery_events: list[RecoveryEvent] = []
     escalations: list[EscalationRecord] = []
+
+    control_timeline: list[ControlSpan] = []
+    """Who held the session, and when, across the whole run.
+
+    Always at least one span -- a run nobody intervened in is one
+    uninterrupted automation span, which is a more useful thing to record
+    than an empty list, because "nobody took over" and "we didn't track it"
+    then look different.
+    """
     error: ReplayError | None = None
     steps_executed: int = 0

@@ -13,6 +13,15 @@ Needs a headed session with a visible desktop (page.pause() has nothing
 meaningful to show over a real display) and a person physically present to
 click Resume, so it can't be driven by an automated test the way
 MockOperatorHandoff can -- see DECISIONS.md Part 7 for why both exist.
+
+What the person does here is still recorded, and this handler contains no
+code to do that. The replay engine opens an OperatorSession around every
+escalate() call, and that session listens to the *page* rather than to the
+caller -- so a human clicking in the Inspector and a handler calling
+locator.click() are recorded by the same listener, because both are real
+events in a real DOM. That is the whole reason the capture lives in the
+page instead of in a wrapper API: a wrapper would have recorded every mode
+except the one where a human is genuinely at the wheel.
 """
 
 from pathlib import Path

@@ -1311,3 +1311,88 @@ scenario with a real run behind it, and nothing beyond that list.
   with no real case behind it, since the fake app signals honestly; the
   status check is the capability-independent default it would override.
   REPORT.md Section 3.
+
+### Step 4 — recording what the human did, and who held the wheel
+
+- **Actions are captured from the page, not from a wrapper API.** The
+  obvious design -- hand the operator an `OperatorSession.click()` /
+  `.fill()` and log the calls -- works only for an operator that is code. A
+  person driving the Playwright Inspector makes no Python calls at all, so
+  the one mode where a real human is genuinely at the wheel would have been
+  the only mode that recorded nothing. A capture-phase listener injected
+  into every frame sees a person clicking in the Inspector and a handler
+  calling `locator.click()` identically, because both are real events in a
+  real DOM. One mechanism, both modes, and what gets recorded is what
+  happened to the page rather than what the caller says it did.
+- **Capture-phase listeners**, so a page handler that calls
+  `stopPropagation()` can't hide an operator's click from the record.
+- **A password never leaves the page.** The JS reports it as absent rather
+  than sending it for Python to mask -- the Part 4 finding was that a value
+  a scan can reach is a value some future consumer forgets to redact, and
+  the fix there was to stop the scan returning it at all. Everything else
+  is sent and masked immediately by `mask_partial`, so the masking rule
+  stays in one place instead of being reimplemented in JavaScript.
+- **The element description never reads an input's `value`.** A password
+  field would otherwise put the secret into a description string, which is
+  exactly the sort of second path Part 4's three separate leaks were about.
+- **A capture failure is recorded, not swallowed.** An empty action list
+  has to mean "the operator did nothing" -- so a session that couldn't
+  install its listener says so, rather than looking identical to a decline.
+  Instrumentation also never breaks the handoff: a person taking over a
+  stuck run matters more than the record of it.
+- **The engine wraps `escalate()`, so no handler knows about any of this.**
+  The handoff contract is unchanged and all three implementations got
+  recording without being touched -- including `InteractivePauseHandoff`,
+  which can't be tested automatically and so is the one that most needed
+  not to require its own code path.
+- **`_Install` indirection exists because `expose_function` registers a
+  name once per page.** Without it, a second escalation in the same run
+  couldn't re-register and its events would have gone on arriving at the
+  first escalation's record -- a silent, plausible-looking wrong answer.
+- **Control spans open and close around the `escalate()` call itself.**
+  The timeline is then a recording of the same fact the call stack already
+  enforces ("automation touches nothing until escalate returns"), not a
+  separate description of it that could drift from the behaviour.
+- **A clean run still gets one span.** "Nobody took over" and "we didn't
+  track it" must not serialize identically, and a single uninterrupted
+  automation span says the first plainly.
+- **Spans are contiguous, asserted in a test**: each starts exactly where
+  the previous ended, so there is no instant the record can't say who was
+  driving. A timeline with gaps would be worse than none, since it would
+  look complete.
+- **`escalation_path()` is shared rather than copied.** Two callers now
+  need the file's name -- the handler writing the request, the engine
+  appending what the operator did -- and a naming rule duplicated in both
+  would split one escalation across two files the first time either
+  changed. The append is best-effort: the same data also rides on the
+  `ReplayResult`, so a handler that wrote its request elsewhere costs the
+  record nothing.
+- **Submits and Enter presses are captured too, not only clicks and
+  changes.** An operator who types into a field and hits Enter never clicks
+  anything, so a click-only recorder would have shown them doing nothing at
+  all. A submit is also its own fact rather than a repeat of whatever
+  caused it -- it can come from Enter, from a button, or from script, and it
+  is the moment the form was actually committed.
+- **A key name is not masked.** `mask_partial("Enter")` gives `"***er"`,
+  which destroys the only information the field carries and protects
+  nothing, because the value is our vocabulary rather than the operator's
+  data. The JS marks those `literal` so the distinction is explicit at the
+  source instead of being inferred from the event kind downstream.
+- **A form is never described by its `innerText`** -- that is every label
+  and value it contains flattened into one string, which would put whatever
+  the operator typed into the description field, right past the masking.
+  Tested.
+- **The listener survives navigation**, via `add_init_script` for documents
+  opened later plus a direct injection into the frames already open. Going
+  somewhere else is the first thing a person taking over a stuck run tends
+  to do, and a recorder that silently stopped at that exact point would be
+  worse than none -- it would look like the operator stopped acting.
+- **Named in REPORT.md rather than left implied: page-level recording can't
+  see the browser.** Back/forward, the address bar, new tabs and native
+  dialogs are chrome rather than DOM and fire no page events. A
+  `framenavigated` entry still records where the operator ended up, just not
+  how they got there, so the log is a faithful record of what happened *to
+  the page* and an incomplete record of what the operator did. Completing it
+  means capturing browser-level events (CDP transition types, plus the
+  existing dialog handler feeding the same log) -- a bigger seam than this
+  needs, and better stated than quietly missing.

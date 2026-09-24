@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -6,7 +7,13 @@ import yaml
 
 from cua.artifacts.schema import CapabilityArtifact, load_yaml
 from cua.core.models import ActionType
-from cua.handoff import EscalationRequest, HandoffAction, HandoffDecision, MockOperatorHandoff
+from cua.handoff import (
+    ControlHolder,
+    EscalationRequest,
+    HandoffAction,
+    HandoffDecision,
+    MockOperatorHandoff,
+)
 from cua.replay.engine import ReplayEngine
 from cua.replay.models import ReplayOutcome
 from tests.conftest import arm_fault as _arm_fault
@@ -166,3 +173,198 @@ def test_risky_step_approved_by_operator_then_automation_completes_it(fake_app_s
     assert result.outcome == ReplayOutcome.RECOVERED
     assert len(result.escalations) == 1
     assert result.escalations[0].decision == HandoffAction.APPROVE_AND_RETRY
+
+
+# -- Phase 5 step 4: what the human did, and who held the wheel -----------
+
+
+def test_a_run_with_no_handoff_still_records_one_control_span(test_policy, tmp_path, artifact):
+    """"Nobody took over" and "we didn't track it" must not look the same.
+    A clean run is one uninterrupted automation span, closed at the end.
+    """
+    engine = ReplayEngine(policy=test_policy, headless=True, evidence_dir=tmp_path)
+    result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
+
+    assert [s.holder for s in result.control_timeline] == [ControlHolder.AUTOMATION]
+    assert result.control_timeline[0].ended_at is not None
+
+
+def test_control_timeline_shows_the_handover_and_the_handback(
+    test_policy, tmp_path, artifact, fake_app_server
+):
+    _arm_fault(fake_app_server, "duplicate_members", True)
+
+    def operator(request: EscalationRequest, surface) -> HandoffDecision:
+        surface.page.frame(name="main").get_by_role("link", name="View").first.click()
+        return HandoffDecision(action=HandoffAction.MANUAL_RESOLVED, operator_note="Picked the first record.")
+
+    engine = ReplayEngine(
+        policy=test_policy, headless=True, evidence_dir=tmp_path,
+        handoff=MockOperatorHandoff(operator, evidence_dir=tmp_path),
+    )
+    result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
+
+    holders = [s.holder for s in result.control_timeline]
+    assert holders == [ControlHolder.AUTOMATION, ControlHolder.HUMAN, ControlHolder.AUTOMATION]
+    assert all(s.ended_at is not None for s in result.control_timeline)
+
+    # Contiguous: each span starts exactly where the previous one ended, so
+    # there is no moment the record can't say who was driving.
+    for earlier, later in zip(result.control_timeline, result.control_timeline[1:]):
+        assert earlier.ended_at == later.started_at
+
+
+def test_operator_actions_are_captured_from_the_page_itself(
+    test_policy, tmp_path, artifact, fake_app_server
+):
+    """The operator clicks through Playwright here; a person in the
+    Inspector would produce the same DOM events. Capturing from the page
+    is what makes one mechanism cover both.
+    """
+    _arm_fault(fake_app_server, "duplicate_members", True)
+
+    def operator(request: EscalationRequest, surface) -> HandoffDecision:
+        surface.page.frame(name="main").get_by_role("link", name="View").first.click()
+        return HandoffDecision(action=HandoffAction.MANUAL_RESOLVED, operator_note="Picked the first record.")
+
+    engine = ReplayEngine(
+        policy=test_policy, headless=True, evidence_dir=tmp_path,
+        handoff=MockOperatorHandoff(operator, evidence_dir=tmp_path),
+    )
+    result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
+
+    actions = result.escalations[0].operator_actions
+    assert actions, "the operator clicked a link and nothing recorded it"
+    assert any(a.kind == "click" and "View" in a.target for a in actions)
+
+
+def test_an_operator_who_does_nothing_records_nothing(test_policy, tmp_path, artifact, fake_app_server):
+    """The other direction: an empty list has to be trustworthy, or it
+    can't be read as "they declined without touching anything".
+    """
+    _arm_fault(fake_app_server, "duplicate_members", True)
+
+    def operator(request: EscalationRequest, surface) -> HandoffDecision:
+        return HandoffDecision(action=HandoffAction.ABANDON, operator_note="Declining.")
+
+    engine = ReplayEngine(
+        policy=test_policy, headless=True, evidence_dir=tmp_path,
+        handoff=MockOperatorHandoff(operator, evidence_dir=tmp_path),
+    )
+    result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
+
+    record = result.escalations[0]
+    assert record.operator_actions == []
+
+
+def test_a_value_the_operator_types_is_recorded_masked(test_policy, tmp_path, artifact, fake_app_server):
+    _arm_fault(fake_app_server, "duplicate_members", True)
+
+    def operator(request: EscalationRequest, surface) -> HandoffDecision:
+        nav = surface.page.frame(name="nav")
+        nav.locator('input[name="q"]').fill("10002")
+        surface.page.frame(name="main").get_by_role("link", name="View").first.click()
+        return HandoffDecision(action=HandoffAction.MANUAL_RESOLVED, operator_note="Corrected the search.")
+
+    engine = ReplayEngine(
+        policy=test_policy, headless=True, evidence_dir=tmp_path,
+        handoff=MockOperatorHandoff(operator, evidence_dir=tmp_path),
+    )
+    result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
+
+    typed = [a for a in result.escalations[0].operator_actions if a.kind == "change"]
+    assert typed, "a filled field produced no change event"
+    assert all(a.value != "10002" for a in typed)  # never the literal
+    assert any(a.value == "***02" for a in typed)
+
+
+def test_the_escalation_file_carries_the_actions_and_the_timeline(
+    test_policy, tmp_path, artifact, fake_app_server
+):
+    """The intervention request and what came of it stay one document --
+    that file is what a reviewer opens.
+    """
+    _arm_fault(fake_app_server, "duplicate_members", True)
+
+    def operator(request: EscalationRequest, surface) -> HandoffDecision:
+        surface.page.frame(name="main").get_by_role("link", name="View").first.click()
+        return HandoffDecision(action=HandoffAction.MANUAL_RESOLVED, operator_note="Picked the first record.")
+
+    engine = ReplayEngine(
+        policy=test_policy, headless=True, evidence_dir=tmp_path,
+        handoff=MockOperatorHandoff(operator, evidence_dir=tmp_path),
+    )
+    engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
+
+    written = json.loads(next(tmp_path.glob("escalation_*.json")).read_text(encoding="utf-8"))
+    assert written["decision"]["action"] == "manual_resolved"
+    assert any("View" in a["target"] for a in written["operator_actions"])
+    assert [s["holder"] for s in written["control_timeline"]] == ["human", "automation"]
+
+
+def test_submits_and_enter_presses_are_recorded_not_only_clicks(
+    test_policy, tmp_path, artifact, fake_app_server
+):
+    """An operator who types into a field and hits Enter never clicks
+    anything. Recording clicks alone would show them doing nothing at all,
+    and the submit is the moment the form was actually committed.
+    """
+    _arm_fault(fake_app_server, "duplicate_members", True)
+
+    def operator(request: EscalationRequest, surface) -> HandoffDecision:
+        nav = surface.page.frame(name="nav")
+        nav.locator('input[name="q"]').fill("10002")
+        nav.locator('input[name="q"]').press("Enter")
+        surface.page.wait_for_timeout(500)
+        return HandoffDecision(action=HandoffAction.ABANDON, operator_note="Re-searched, then stopped.")
+
+    engine = ReplayEngine(
+        policy=test_policy, headless=True, evidence_dir=tmp_path,
+        handoff=MockOperatorHandoff(operator, evidence_dir=tmp_path),
+    )
+    result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
+
+    actions = result.escalations[0].operator_actions
+    kinds = {a.kind for a in actions}
+    assert "key" in kinds and "submit" in kinds
+
+    enter = next(a for a in actions if a.kind == "key")
+    # Not masked: a key name is our own vocabulary, not user data, and
+    # "***er" would destroy the only thing the field says.
+    assert enter.value == "Enter"
+
+    submitted = next(a for a in actions if a.kind == "submit")
+    assert "form" in submitted.target
+    # The form's own text is never used to describe it -- that would be
+    # every label and value it contains, flattened into one string.
+    assert "10002" not in submitted.target
+
+
+def test_actions_on_a_page_opened_during_the_handoff_are_still_recorded(
+    test_policy, tmp_path, artifact, fake_app_server
+):
+    """The listener has to survive the operator navigating. A human taking
+    over a stuck run very often goes somewhere else first, and a recorder
+    that only covers the document that was open when they arrived would
+    quietly stop recording at exactly that point.
+    """
+    _arm_fault(fake_app_server, "duplicate_members", True)
+
+    def operator(request: EscalationRequest, surface) -> HandoffDecision:
+        main = surface.page.frame(name="main")
+        main.goto(f"{fake_app_server}/app/member/10002")  # a document loaded mid-handoff
+        main.get_by_role("link", name="Open New Sub-Account").click()
+        surface.page.wait_for_timeout(300)
+        return HandoffDecision(action=HandoffAction.ABANDON, operator_note="Looked around, then stopped.")
+
+    engine = ReplayEngine(
+        policy=test_policy, headless=True, evidence_dir=tmp_path,
+        handoff=MockOperatorHandoff(operator, evidence_dir=tmp_path),
+    )
+    result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
+
+    actions = result.escalations[0].operator_actions
+    clicked = [a for a in actions if a.kind == "click"]
+    assert clicked, "a click on a page opened during the handoff recorded nothing"
+    assert any("Open New Sub-Account" in a.target for a in clicked)
+    assert any("10002" in (a.url or "") for a in clicked)
