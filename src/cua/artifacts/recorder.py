@@ -67,6 +67,8 @@ def build_artifact(
     discovery_model: str,
     inputs: dict[str, str] | None = None,
     input_descriptions: dict[str, str] | None = None,
+    input_patterns: dict[str, str] | None = None,
+    input_examples: dict[str, str] | None = None,
     secret_names: list[str] | None = None,
     secret_values: dict[str, str] | None = None,
     output_descriptions: dict[str, str] | None = None,
@@ -82,6 +84,8 @@ def build_artifact(
 ) -> CapabilityArtifact:
     inputs = inputs or {}
     input_descriptions = input_descriptions or {}
+    input_patterns = input_patterns or {}
+    input_examples = input_examples or {}
     secret_names = secret_names or []
     secret_values = secret_values or {}
     output_descriptions = output_descriptions or {}
@@ -94,6 +98,8 @@ def build_artifact(
     replayable = [s for s in steps if s.action is not None and s.action.type in _REPLAYABLE_TYPES]
     if not replayable:
         raise ArtifactBuildError("no replayable steps found -- every action was TYPE/KEY or unresolved")
+
+    _check_input_contract(inputs, input_patterns, input_examples)
 
     policy = policy or PolicyEngine()
     parameterized_steps = _build_steps(steps, inputs, secret_values, policy)
@@ -134,15 +140,16 @@ def build_artifact(
         target_domain=target_domain,
         entry_url=entry_url,
         inputs=[
-            # Deliberately no `example`. The literal is passed in so the
-            # recorder can *recognize* it and parameterize it away; storing
-            # it back as an example would undo exactly that work and leave
-            # a real record identifier in a committed file. The field stays
-            # in the schema for an artifact whose example is genuinely safe
-            # to publish.
             InputSpec(
                 name=name,
                 description=input_descriptions.get(name, ""),
+                pattern=input_patterns.get(name),
+                # Only ever an example the caller chose. The discovery
+                # literal is passed in so the recorder can *recognize* it
+                # and parameterize it away; storing it back here would undo
+                # exactly that work and leave a real record identifier in a
+                # committed file. _check_input_contract enforces that.
+                example=input_examples.get(name),
                 sensitive=name in sensitive_inputs,
             )
             for name in inputs
@@ -158,6 +165,53 @@ def build_artifact(
             source_run_log=source_run_log,
         ),
     )
+
+
+def _check_input_contract(
+    inputs: dict[str, str],
+    input_patterns: dict[str, str],
+    input_examples: dict[str, str],
+) -> None:
+    """Refuses an input contract that can't be true, at build time.
+
+    All three of these are cheap to check here and expensive to discover
+    later: a bad pattern fails at the door of every future replay, a
+    pattern the recorded run's own value doesn't satisfy means the
+    capability was recorded with a value it now claims to reject, and an
+    example that doesn't satisfy the pattern is documentation that lies.
+
+    The last check is the one with teeth: an `example` set to the discovery
+    literal is exactly the leak parameterization exists to prevent, and it
+    is the easy mistake to make, since that value is right there and does
+    match the pattern.
+    """
+    for name, pattern in input_patterns.items():
+        if name not in inputs:
+            raise ArtifactBuildError(f"pattern given for unknown input {name!r}")
+        try:
+            compiled = re.compile(pattern)
+        except re.error as exc:
+            raise ArtifactBuildError(f"input {name!r} has an invalid pattern {pattern!r}: {exc}") from exc
+        literal = inputs[name]
+        if literal and not compiled.fullmatch(literal):
+            raise ArtifactBuildError(
+                f"input {name!r} declares pattern {pattern!r}, but the recorded run's own value "
+                f"does not match it -- the capability would reject the value it was built from"
+            )
+
+    for name, example in input_examples.items():
+        if name not in inputs:
+            raise ArtifactBuildError(f"example given for unknown input {name!r}")
+        if example == inputs[name]:
+            raise ArtifactBuildError(
+                f"input {name!r}'s example is the discovery run's own value. An example is published "
+                f"in a committed file; pick one that is obviously not real data."
+            )
+        pattern = input_patterns.get(name)
+        if pattern and not re.fullmatch(pattern, example):
+            raise ArtifactBuildError(
+                f"input {name!r}'s example {example!r} does not match its own pattern {pattern!r}"
+            )
 
 
 def _build_steps(

@@ -107,6 +107,26 @@ def test_hard_failure_exits_one(run_cli, lookup, fake_app_server):
     assert "Traceback" not in proc.stderr
 
 
+def test_malformed_input_exits_one_with_a_structured_result(run_cli, lookup, tmp_path):
+    """A validation error is an outcome, not a usage error: the caller gets
+    the same exit code and the same result-file shape as any other hard
+    failure. Contrast with a *missing* input, which exits 64 -- that means
+    the command was wrong, and there is no run to report on.
+    """
+    out = tmp_path / "invalid.json"
+    proc = run_cli(lookup, "--input", "member_id=abc", "--out", str(out))
+
+    assert proc.returncode == 1
+    assert "Outcome: hard_failure" in proc.stdout
+    assert "input_invalid" in proc.stdout
+    assert "Traceback" not in proc.stderr
+
+    payload = json.loads(out.read_text(encoding="utf-8"))
+    assert payload["result"]["error"]["reason_code"] == "input_invalid"
+    assert payload["result"]["steps_executed"] == 0
+    assert "^[0-9]{5}$" in payload["result"]["error"]["expected"]
+
+
 def test_bad_command_line_is_not_mistaken_for_a_business_outcome(run_cli, lookup):
     proc = run_cli(lookup, "--input", "member_id=10001", "--no-such-flag")
     assert proc.returncode == USAGE_EXIT_CODE

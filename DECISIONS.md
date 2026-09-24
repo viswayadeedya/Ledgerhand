@@ -1166,3 +1166,71 @@ scenario with a real run behind it, and nothing beyond that list.
   enough to matter. What's under test is which number was used and that the
   fault fired once, not the timer's precision -- a threshold sitting exactly
   on the nominal value tests the platform's clock instead.
+
+### Step 2 — input validation before anything runs
+
+- **`InputSpec.pattern`, checked before the browser is constructed.** The
+  brief lists "a validation error" among the runtime conditions replay must
+  handle deliberately. The cheapest place to handle one is before any work
+  happens: a member ID of `abc` cannot become a correct answer however well
+  the rest of the run goes, so spending a Chromium launch, a login and six
+  steps to discover that is pure waste. It also reports better -- left to
+  run, the failure would eventually surface as "element not found" at
+  whichever step happened to fall over first, which names the symptom
+  instead of the cause.
+- **The pattern is the caller's contract, not the app's.** It says what
+  this capability accepts, which is deliberately not the same question as
+  what the app would reject. An input that passes can still come back as
+  `member_not_found` -- well-formed and nonexistent are different answers,
+  and collapsing them would turn a business outcome into a validation
+  error.
+- **A rejection is returned as a `ReplayResult`, not raised.** The existing
+  missing-input/missing-secret checks raise `ValueError` and exit 64, which
+  is right for them: a missing parameter means the *command* was malformed
+  and there is no run to report on. A malformed value is different -- it is
+  an answer about this invocation, and the caller needs it in the same
+  shape as every other ending, with an exit code to branch on and a result
+  file that says what was expected and what arrived. Hence
+  `HARD_FAILURE`/`input_invalid` and exit 1.
+- **Not a business outcome, though it is "expected".** The taxonomy's job
+  is telling a caller what to do. A business outcome means the app answered
+  and retrying is pointless; `input_invalid` means *nothing ran* and the
+  caller should fix the call and try again. Filing it under
+  `BUSINESS_OUTCOME` would have told an orchestrator to give up on a
+  request that a corrected input would satisfy.
+- **The rejected value is masked with a shape hint** when the input is
+  declared sensitive, for the same reason `format_invalid` turns it on: the
+  complaint is *about* the shape of the value, and a bare `***bc` states
+  the problem while withholding the evidence for it.
+- **An invalid regex blames the artifact, not the caller.** It reports the
+  pattern as unusable and says to rebuild, rather than reporting the
+  caller's perfectly fine input as malformed -- the recorder refuses to
+  build one, so reaching this means the file was tampered with.
+- **The recorder refuses three contradictory contracts at build time**: a
+  pattern that can't compile, a pattern the recorded run's own value fails
+  (the capability would reject the value it was built from), and an example
+  that doesn't satisfy its own pattern. All three are free to check when
+  building and expensive to meet later.
+- **`example` may not be the discovery literal, enforced rather than
+  documented.** Phase 3 left `example` unfilled precisely because the
+  obvious value to put there is the run's own member ID -- which is real
+  data, in a committed file, and exactly what parameterization exists to
+  remove. Now that the field is used, that reasoning became a check:
+  `00000` is well-formed, matches the pattern, and matches no seeded
+  member.
+- **Schema 1.1 -> 1.2, artifact version 2 -> 3.** `pattern` is optional and
+  defaults to the old behaviour, so a 1.1 artifact still loads and runs.
+- **The outdated-artifact warning now names what *that* file predates.**
+  Phase 4's single hardcoded sentence ("notably `must_equal`") was right
+  while there was one bump to describe; with two it would have told a 1.1
+  artifact it lacks something it has. A map of what each minor added keeps
+  the warning specific, which was the point of it over "this is outdated".
+- **The forward-compatibility test now derives the version it tries.** It
+  was written as the literal `"1.2"`, which passed only until 1.2 became
+  current -- then failed for a reason unrelated to what it checks. Second
+  time that shape of test has broken on a bump; deriving `minor + 1` ends
+  it.
+- **Regenerating produced a five-line diff.** Everything but the four new
+  lines and the version came back byte-identical from the same run log,
+  which is a small standing check that recording stays deterministic and
+  that no discovery-time literal has crept back in.

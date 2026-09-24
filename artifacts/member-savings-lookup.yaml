@@ -1,6 +1,6 @@
-schema_version: '1.1'
+schema_version: '1.2'
 id: member-savings-lookup
-version: 2
+version: 3
 title: Look up a member's savings balance
 description: Signs in to the teller system, searches for a member by ID, and reads
   their name and balances off the member detail page.
@@ -10,6 +10,8 @@ inputs:
 - name: member_id
   description: The member ID to look up. Echoed back on the detail page, which is
     what makes the identity assertion possible.
+  example: '00000'
+  pattern: ^[0-9]{5}$
   sensitive: true
 secrets:
 - name: username
@@ -177,6 +179,6 @@ business_outcomes:
       value: Multiple members matched
   requires_human: true
 provenance:
-  discovered_at: '2026-09-24T04:28:14.696615+00:00'
+  discovered_at: '2026-09-24T05:04:24.372178+00:00'
   discovery_model: claude-sonnet-5
   source_run_log: evidence/discovery-member-lookup/run_log.json

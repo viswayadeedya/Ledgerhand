@@ -4,6 +4,7 @@ policy discovery uses. This is the path an AI agent would trigger in
 production -- reliable and cheap because there's no model call per step.
 """
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -77,6 +78,16 @@ class ReplayEngine:
         inputs = inputs or {}
         secrets = secrets or {}
         _validate_params(artifact, inputs, secrets)
+
+        # Deliberately between validation and the browser: a value the
+        # capability's own contract rejects can never become a correct
+        # answer, so launching Chromium, signing in and running six steps
+        # to find that out is pure waste -- and the failure it would
+        # eventually produce ("element not found", probably) names the
+        # symptom instead of the cause.
+        rejected = _check_input_patterns(artifact, inputs)
+        if rejected is not None:
+            return rejected
 
         surface = PlaywrightSurface(
             base_url=f"http://{artifact.target_domain}",
@@ -502,6 +513,61 @@ def _validate_params(artifact: CapabilityArtifact, inputs: dict[str, str], secre
             render_value(spec.must_equal, inputs, secrets)
         except RenderError as exc:
             raise ValueError(f"output '{spec.name}' has an unresolvable must_equal ({spec.must_equal}): {exc}") from exc
+
+
+def _check_input_patterns(artifact: CapabilityArtifact, inputs: dict[str, str]) -> ReplayResult | None:
+    """Rejects an input that doesn't match its declared pattern, as a
+    result rather than an exception.
+
+    Returning a ReplayResult instead of raising, unlike the missing-param
+    checks above: a missing input means the command was malformed and there
+    is nothing to report *about a run*, while a malformed input is a
+    validation error the caller needs back in the same shape as every other
+    outcome -- an exit code to branch on and a result file that says what
+    was expected and what arrived.
+    """
+    for spec in artifact.inputs:
+        if not spec.pattern or spec.name not in inputs:
+            continue
+        value = inputs[spec.name]
+        try:
+            matched = re.fullmatch(spec.pattern, value) is not None
+        except re.error as exc:
+            # A pattern the recorder should have refused; say so plainly
+            # rather than blaming the caller's perfectly fine input.
+            return ReplayResult(
+                outcome=ReplayOutcome.HARD_FAILURE,
+                capability_id=artifact.id,
+                error=ReplayError(
+                    reason_code=FailureReason.INPUT_INVALID,
+                    step_index=None,
+                    expected=f"input '{spec.name}' to declare a usable pattern",
+                    observed=f"{spec.pattern!r} is not a valid regex: {exc}",
+                    message=f"Artifact declares an invalid pattern for input '{spec.name}'. Rebuild it.",
+                ),
+            )
+        if matched:
+            continue
+
+        # Shape hint on, for the same reason format_invalid turns it on:
+        # the complaint *is* about the value's shape, and a bare "***bc"
+        # would state the problem while withholding the evidence for it.
+        shown = mask_partial(value, shape_hint=True) if spec.sensitive else repr(value)
+        return ReplayResult(
+            outcome=ReplayOutcome.HARD_FAILURE,
+            capability_id=artifact.id,
+            error=ReplayError(
+                reason_code=FailureReason.INPUT_INVALID,
+                step_index=None,
+                expected=f"input '{spec.name}' to match {spec.pattern}",
+                observed=shown,
+                message=(
+                    f"Input '{spec.name}' was rejected before anything ran: it does not match the "
+                    f"pattern this capability declares ({spec.pattern}). No browser was started."
+                ),
+            ),
+        )
+    return None
 
 
 def _safe_observe(surface: PlaywrightSurface):

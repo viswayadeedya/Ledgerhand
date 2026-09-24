@@ -24,6 +24,7 @@ class FailureReason(str, Enum):
     bad way to find that out).
     """
 
+    INPUT_INVALID = "input_invalid"  # a caller-supplied input didn't match the contract; nothing was run
     IDENTITY_MISMATCH = "identity_mismatch"  # the page's record isn't the one that was asked for
     FORMAT_INVALID = "format_invalid"  # a value was found but doesn't look like what it should be
     ELEMENT_NOT_FOUND = "element_not_found"  # no locator candidate resolved

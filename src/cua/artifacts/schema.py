@@ -102,7 +102,31 @@ class InputSpec(BaseModel):
     name: str
     type: str = "string"
     description: str = ""
+
     example: str | None = None
+    """A value safe to publish, for a reader working out how to call this.
+
+    Never filled from the discovery literal -- the recorder is given that
+    literal so it can recognize and parameterize it away, and storing it
+    back here would undo exactly that work. An example has to be chosen to
+    be obviously fake (00000 matches no seeded member) so nobody mistakes
+    the documentation for data.
+    """
+
+    pattern: str | None = None
+    """A regex the caller's value must match, checked before a browser opens.
+
+    This is the brief's "validation error" handled at the only place it can
+    be handled cheaply: a member ID of "abc" cannot become a correct answer
+    no matter how well the rest of the run goes, so spending a browser
+    launch, a login and six steps to discover that is pure waste -- and the
+    failure it eventually produced would have been some downstream
+    "element not found", which describes the symptom rather than the cause.
+
+    Deliberately the caller's contract, not the app's: this says what this
+    capability accepts, which is not the same as what the app would reject.
+    An input that passes here can still come back as a business outcome.
+    """
 
     sensitive: bool = False
     """Marks an input that must be masked anywhere it's written down.
@@ -179,13 +203,25 @@ class ProvenanceInfo(BaseModel):
     source_run_log: str | None = None
 
 
-CURRENT_SCHEMA_VERSION = "1.1"
+CURRENT_SCHEMA_VERSION = "1.2"
 """The schema this code reads and writes.
 
-Bumped from 1.0 for the Phase 3 additions -- step descriptions, risk
-labels, output types, identity assertions, sensitivity flags. A *minor*
-bump because every one of those is optional and defaults to the old
-behaviour, so a 1.0 artifact still loads and still runs exactly as it did.
+Every bump so far has been *minor*, because every field added has been
+optional and defaulted to the old behaviour -- so an artifact written
+against an earlier minor still loads and still runs exactly as it did.
+"""
+
+_MINOR_ADDITIONS = {
+    1: "identity assertions (must_equal), which is what proves a replay reached the right record",
+    2: "input patterns, which reject a malformed input before a browser opens",
+}
+"""What each minor version added, so an outdated-artifact warning can name
+the specific checks *that* file predates.
+
+A single hardcoded sentence was fine while there was one bump to describe;
+with two it would have started telling a 1.1 artifact it lacks something it
+has. Naming the real gap is the whole value of the warning over "this is
+outdated".
 """
 
 
@@ -231,10 +267,12 @@ def check_schema_version(value: str) -> str:
             "rather than applied. Upgrade cua before running it."
         )
     if minor < current_minor:
+        missing = "; ".join(
+            text for added_at, text in sorted(_MINOR_ADDITIONS.items()) if added_at > minor
+        )
         warnings.warn(
             f"artifact schema_version {value} predates this code's {CURRENT_SCHEMA_VERSION}; "
-            "it will run, but without the checks added since -- notably the identity assertion "
-            "(must_equal), so it may not be proving it reached the right record. "
+            f"it will run, but without the checks added since: {missing}. "
             "Rebuild it from its source run log to pick those up.",
             OutdatedArtifactWarning,
             stacklevel=2,

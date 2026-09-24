@@ -28,6 +28,27 @@ def main() -> None:
 
     parser.add_argument("--input", action="append", metavar="name=value", help="Repeatable")
     parser.add_argument("--input-desc", action="append", metavar="name=description", help="Repeatable")
+    parser.add_argument(
+        "--input-pattern",
+        action="append",
+        metavar="name=regex",
+        help=(
+            "Repeatable; a regex the caller's value must fully match, e.g. "
+            '--input-pattern "member_id=^[0-9]{5}$". Checked before a browser opens, so a malformed '
+            "input costs nothing and reports itself as a validation error rather than as whatever "
+            "downstream step happened to fall over first."
+        ),
+    )
+    parser.add_argument(
+        "--input-example",
+        action="append",
+        metavar="name=value",
+        help=(
+            "Repeatable; a value safe to publish, for whoever reads this artifact to work out how to "
+            "call it. Must not be the discovery run's own value -- that is real data, and the whole "
+            "point of parameterizing it was to keep it out of a committed file."
+        ),
+    )
     parser.add_argument("--secret", action="append", metavar="name", help="Repeatable; declares a required secret")
     parser.add_argument(
         "--secret-value",
@@ -112,6 +133,8 @@ def main() -> None:
         discovery_model=run_log["model"],
         inputs=_parse_kv(args.input),
         input_descriptions=_parse_kv(args.input_desc),
+        input_patterns=_parse_kv(args.input_pattern),
+        input_examples=_parse_kv(args.input_example),
         secret_names=args.secret or [],
         secret_values=_parse_kv(args.secret_value),
         output_descriptions=_parse_kv(args.output_desc),

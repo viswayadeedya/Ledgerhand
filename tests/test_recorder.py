@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -478,10 +479,66 @@ def _shipped() -> dict:
     return yaml.safe_load((REPO_ROOT / "artifacts" / "member-savings-lookup.yaml").read_text(encoding="utf-8"))
 
 
+def test_an_invalid_pattern_is_refused_at_build_time(real_run):
+    """A pattern that can't compile fails at the door of every future
+    replay. It costs nothing to find out here and something every time
+    otherwise.
+    """
+    data, steps = real_run
+    with pytest.raises(ArtifactBuildError, match="invalid pattern"):
+        _build(data, steps, input_patterns={"member_id": "^[0-9{5}$"})
+
+
+def test_a_pattern_the_recorded_run_would_fail_is_refused(real_run):
+    """The capability would reject the very value it was built from -- a
+    contradiction, and one that would otherwise show up as a mystifying
+    validation error on the first replay of a known-good input.
+    """
+    data, steps = real_run
+    with pytest.raises(ArtifactBuildError, match="the value it was built from"):
+        _build(data, steps, input_patterns={"member_id": "^[a-z]+$"})
+
+
+def test_the_discovery_literal_cannot_be_stored_as_an_example(real_run):
+    """The easy mistake, and the one parameterization exists to prevent:
+    the run's own member ID is right there and does match the pattern, so
+    reaching for it as "the example" puts real data straight back into a
+    committed file.
+    """
+    data, steps = real_run
+    with pytest.raises(ArtifactBuildError, match="discovery run's own value"):
+        _build(data, steps, input_examples={"member_id": "10001"})
+
+
+def test_an_example_that_contradicts_its_own_pattern_is_refused(real_run):
+    data, steps = real_run
+    with pytest.raises(ArtifactBuildError, match="does not match its own pattern"):
+        _build(
+            data,
+            steps,
+            input_patterns={"member_id": "^[0-9]{5}$"},
+            input_examples={"member_id": "abc"},
+        )
+
+
+def test_the_shipped_artifact_declares_a_member_id_pattern_and_a_fake_example():
+    """Checked against what actually ships, not a copy built in the test:
+    the pattern is only worth anything if the committed file carries it.
+    """
+    shipped = _shipped()
+    member_id = next(i for i in shipped["inputs"] if i["name"] == "member_id")
+
+    assert member_id["pattern"] == "^[0-9]{5}$"
+    assert member_id["example"] == "00000"
+    # The example is published documentation. It has to be plainly not a
+    # real record -- 00000 is well-formed and matches nothing seeded.
+    assert re.fullmatch(member_id["pattern"], member_id["example"])
+
+
 def test_the_shipped_artifact_is_at_the_current_schema():
     shipped = _shipped()
     assert shipped["schema_version"] == CURRENT_SCHEMA_VERSION
-    assert shipped["version"] == 2  # the capability's own revision, not the schema's
+    assert shipped["version"] == 3  # the capability's own revision, not the schema's
 
 
 def test_an_older_artifact_still_loads_but_says_what_it_is_missing():
@@ -500,11 +557,15 @@ def test_an_older_artifact_still_loads_but_says_what_it_is_missing():
 
 def test_a_newer_minor_version_is_refused_rather_than_partly_applied():
     """The fields most likely to be new are *checks*. Pydantic would drop
-    what it doesn't recognise, so running a 1.2 artifact on 1.1 code means
-    silently ignoring the safety it was written with -- and reporting
-    success.
+    what it doesn't recognise, so running a next-minor artifact on this
+    code means silently ignoring the safety it was written with -- and
+    reporting success.
     """
-    newer = dict(_shipped(), schema_version="1.2")
+    # Derived, not hardcoded: written as a literal this test passes only
+    # until that version becomes the current one, and then fails for a
+    # reason that has nothing to do with what it checks.
+    major, minor = (int(p) for p in CURRENT_SCHEMA_VERSION.split("."))
+    newer = dict(_shipped(), schema_version=f"{major}.{minor + 1}")
 
     with pytest.raises(SchemaVersionError, match="newer than this code"):
         load_yaml(yaml.safe_dump(newer))

@@ -308,6 +308,57 @@ def test_unresolvable_assertion_fails_before_opening_a_browser(engine, artifact)
         engine.run(broken, inputs={"member_id": "10001"}, secrets=SECRETS)
 
 
+def test_malformed_input_is_rejected_before_any_browser_starts(engine, artifact, monkeypatch):
+    """The saving is the point: a value the capability's own contract
+    rejects cannot become a correct answer, so it must not cost a browser
+    launch, a login and six steps to find out.
+
+    Proved by making a browser launch fail the test outright rather than
+    by timing it -- a "fast enough" assertion would still pass if Chromium
+    started and was merely quick about it.
+    """
+
+    def _explode(*args, **kwargs):
+        raise AssertionError("a browser was launched for an input that never should have reached one")
+
+    monkeypatch.setattr("cua.replay.engine.PlaywrightSurface", _explode)
+    result = engine.run(artifact, inputs={"member_id": "abc"}, secrets=SECRETS)
+
+    assert result.outcome == ReplayOutcome.HARD_FAILURE
+    assert result.error.reason_code == FailureReason.INPUT_INVALID
+    assert result.steps_executed == 0
+    assert "^[0-9]{5}$" in result.error.expected
+
+
+def test_a_rejected_input_is_reported_not_raised(engine, artifact, monkeypatch):
+    """A validation error is a result, not a crash: the caller needs the
+    same exit code and result file shape it gets for every other ending.
+    Contrast with a *missing* input below, which means the command itself
+    was malformed and there is no run to report on.
+    """
+    monkeypatch.setattr("cua.replay.engine.PlaywrightSurface", _never_called)
+    result = engine.run(artifact, inputs={"member_id": "123"}, secrets=SECRETS)  # too short
+    assert result.error.reason_code == FailureReason.INPUT_INVALID
+
+
+def test_a_rejected_sensitive_input_is_masked_in_the_error(engine, artifact, monkeypatch):
+    """member_id is declared sensitive, and a rejection message is written
+    to disk like any other. The shape hint carries what the complaint is
+    actually about, since "***23" alone states the problem while
+    withholding the evidence for it.
+    """
+    monkeypatch.setattr("cua.replay.engine.PlaywrightSurface", _never_called)
+    result = engine.run(artifact, inputs={"member_id": "123456789"}, secrets=SECRETS)
+
+    assert "123456789" not in result.error.observed
+    assert "***89" in result.error.observed
+    assert "shape:" in result.error.observed
+
+
+def _never_called(*args, **kwargs):
+    raise AssertionError("a browser was launched for an input that never should have reached one")
+
+
 def test_replay_requires_declared_inputs_and_secrets(engine, artifact):
     with pytest.raises(ValueError, match="missing required inputs"):
         engine.run(artifact, inputs={}, secrets=SECRETS)

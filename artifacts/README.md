@@ -9,15 +9,24 @@ LLM in the loop.
 ## Reading one
 
 - `schema_version` -- which version of this contract the file speaks
-  (`1.1`). An older artifact still loads, with a warning naming what it
+  (`1.2`). An older artifact still loads, with a warning naming what it
   predates; a newer one is refused rather than partly applied, since the
   fields most likely to be new are *checks*, and silently dropping one
   means running without the safety it was written with.
 - `version` -- the capability's own revision, independent of the schema's.
 - `inputs` / `secrets` -- what the caller must supply per invocation.
   `inputs` are business parameters (e.g. a member ID); `secrets` are
-  credentials, never given a literal value here. `sensitive: true` on an
-  input means a result file records it masked.
+  credentials, never given a literal value here. An input may also carry:
+  - `pattern` -- a regex the caller's value must fully match, checked
+    *before a browser opens*. A member ID of `abc` can't become a correct
+    answer however well the rest of the run goes, so it's rejected for
+    nothing rather than after a login and six steps — and reported as a
+    validation error (`input_invalid`) rather than as whichever step
+    happened to fall over first.
+  - `example` -- a value safe to publish. Never the discovery run's own
+    value; the recorder refuses that outright, since parameterizing it away
+    was the whole point.
+  - `sensitive: true` -- a result file records it masked.
 - `outputs` -- what the caller gets back. Each has its own `target` (a
   locator), because replay always re-reads the live page at the checkpoint;
   it never just repeats whatever value discovery happened to see. Each may
@@ -54,28 +63,46 @@ LLM in the loop.
 
 ## How this one was built
 
+This file is never hand-edited. Every change to it goes through the
+recorder or a capture script and bumps `version`, so what's committed is
+always something a tool produced from a real run.
+
 ```
 # 1. The happy-path steps, outputs, and checkpoint, from a real discovery run
 python -m cua.artifacts \
   --run-log "evidence/discovery-member-lookup/run_log.json" \
   --out "artifacts/member-savings-lookup.yaml" \
-  --id "member-savings-lookup" \
+  --id "member-savings-lookup" --version 3 \
   --title "Look up a member's savings balance" \
-  --description "Signs in to the teller system, searches for a member by ID, and reads their current savings and checking balance." \
+  --description "Signs in to the teller system, searches for a member by ID, and reads their name and balances off the member detail page." \
   --input "member_id=10001" \
-  --input-desc "member_id=The member ID to look up." \
+  --input-desc "member_id=The member ID to look up. Echoed back on the detail page, which is what makes the identity assertion possible." \
+  --input-pattern "member_id=^[0-9]{5}$" \
+  --input-example "member_id=00000" \
+  --sensitive-input member_id \
   --secret username --secret password \
   --secret-value "username=teller1" \
-  --output-desc "member_name=Member's full name." \
+  --output-desc "member_id=The member ID shown on the record. Asserted equal to the requested one." \
+  --output-desc "member_name=The member's full name as shown on the record." \
   --output-desc "savings_balance=Current savings balance." \
   --output-desc "checking_balance=Current checking balance." \
+  --assert-equals "member_id={{inputs.member_id}}" \
+  --output-type "savings_balance=money" \
+  --output-type "checking_balance=money" \
+  --sensitive-output member_id --sensitive-output member_name \
+  --sensitive-output savings_balance --sensitive-output checking_balance \
   --checkpoint-text "Savings Balance"
 
-# 2. Two business outcomes, added afterward from real captured page states
+# 2. Business outcomes, added afterward from real captured page states
 #    (deterministic exploration, not LLM discovery -- see each script's docstring)
 python scripts/capture_business_outcome.py
 python scripts/capture_ambiguous_duplicate_outcome.py
 ```
+
+Step 1 needs no API key and no browser -- it reads the run log off disk.
+That separation is deliberate: re-deriving an artifact should never need
+the model again. Step 2 does drive a real browser, against a running fake
+app.
 
 `--output` values default to whatever the discovery run's own
 `report_success` call returned (`run_log.json`'s `outputs`), so you only need
