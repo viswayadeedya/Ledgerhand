@@ -1707,3 +1707,40 @@ scenario with a real run behind it, and nothing beyond that list.
   will see it. That is a retention problem rather than a redaction one, and
   REPORT.md Section 6 now says where such files would live in production
   and when they would be deleted.
+
+### Step 10 — proving replay needs no model by taking the model away
+
+- **Two independent checks, because each misses what the other catches.**
+  Blocking the network proves no call is *made*, and is what fails the day
+  someone adds an LLM fallback to a failing step; asserting the module is
+  never imported proves the dependency isn't in the replay path at all, and
+  catches an import creeping in before it grows a call site. Either alone
+  would leave an obvious way to be wrong.
+- **Blocked at DNS, with an exception that names the violation.** A generic
+  connection error is something a caller might reasonably retry;
+  `AnthropicWasCalled` says what rule was broken. Only Anthropic hosts are
+  blocked, so the fake app (127.0.0.1) and Playwright's local driver socket
+  keep working -- which means a failure can only mean replay reached for
+  the model.
+- **The guard is tested too.** `test_the_guard_itself_blocks_anthropic`
+  exists because every other test in the file passes trivially if the
+  fixture silently does nothing -- the same reason the leak scan is
+  verified by planting leaks.
+- **A control test asserts discovery *does* import the SDK.** Without it,
+  "replay doesn't import anthropic" would keep passing if the SDK were
+  removed from the project altogether, at which point it would no longer be
+  saying anything about replay.
+- **The import check runs in a fresh interpreter.** By that point in a full
+  session another module may well have imported `anthropic`, and asking
+  `sys.modules` in-process would answer about the test session rather than
+  about replay.
+- **A business-outcome run is covered as well as the happy path.**
+  Recognising "no such member" is exactly the sort of judgement someone
+  might reach for a model to make; it comes from the artifact's own detect
+  locator, and the test proves that with the model unreachable.
+- **A fake `ANTHROPIC_API_KEY` is set for the duration**, so a passing run
+  can't be explained by a real key happening to sit in the environment.
+- **REPORT.md's claim was downgraded from "verified by grep".** It now
+  describes what the tests do, because "we looked and didn't see it" and
+  "we broke it and nothing noticed" are different strengths of evidence and
+  the write-up should not claim the stronger one while doing the weaker.

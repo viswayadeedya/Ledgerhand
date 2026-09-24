@@ -76,9 +76,16 @@ failure in any returns **no outputs at all**.
 
 ## 3. Determinism & error handling
 
-Replay never imports the Anthropic SDK — verified by grep and by running
-with a deliberately invalid key. Everything comes from `artifact.steps`, on
-disk before the run starts.
+Replay never calls the LLM, and this is proved by taking it away rather
+than asserted: a test makes `api.anthropic.com` unresolvable at the socket
+layer and runs a full real replay — browser, frames, locators, checkpoint,
+outputs — plus a business-outcome run, since recognising "no such member"
+is exactly the judgement someone might reach for a model to make. A second
+test runs a fresh interpreter and asserts importing the replay CLI pulls in
+no `anthropic` module at all, with a control test asserting the discovery
+path *does* — without which the first would keep passing if the SDK were
+removed from the project entirely. Everything comes from `artifact.steps`,
+on disk before the run starts.
 
 | Outcome | Meaning | Exit |
 |---|---|---|
