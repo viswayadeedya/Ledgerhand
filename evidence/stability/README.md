@@ -1,11 +1,15 @@
 # Stability
 
 20 replays of `member-savings-lookup` v4,
-each against an injected fault. The schedule is a shuffled pool covering
-every fault rather than an independent draw per run: sampling with
-replacement looks more random and is worse evidence -- the first seeded
-pass produced eight `app_error`s and never once fired `popup`, `slow_load`
-or `duplicate_members`. Order and member stay unpredictable; coverage is
+covering every injected fault twice, in random order, plus clean runs.
+
+The schedule is a shuffled pool rather than an independent draw per run:
+sampling with replacement looks more random and is worse evidence -- the
+first seeded pass produced eight `app_error`s and never once fired
+`popup`, `slow_load` or `duplicate_members`. "No fault" is an entry in
+that pool like any other, so clean runs are guaranteed too and a
+regression that only breaks the happy path can't hide behind a scoreboard
+made entirely of faults. Order and member stay unpredictable; coverage is
 guaranteed. Seed `1729` -- reproducible with:
 
 ```

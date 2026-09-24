@@ -19,28 +19,28 @@
         "decision": "abandon",
         "operator_note": "Two conflicting records and no way to tell which is right; declining to guess.",
         "resumed_via": "MockOperatorHandoff",
-        "requested_at": "2026-09-24T17:26:41.614952+00:00",
-        "resolved_at": "2026-09-24T17:26:41.662016+00:00",
+        "requested_at": "2026-09-24T18:26:41.331509+00:00",
+        "resolved_at": "2026-09-24T18:26:41.370531+00:00",
         "operator_actions": []
       }
     ],
     "control_timeline": [
       {
         "holder": "automation",
-        "started_at": "2026-09-24T17:26:37.234301+00:00",
-        "ended_at": "2026-09-24T17:26:41.614952+00:00",
+        "started_at": "2026-09-24T18:26:38.633314+00:00",
+        "ended_at": "2026-09-24T18:26:41.331509+00:00",
         "reason": "replay started"
       },
       {
         "holder": "human",
-        "started_at": "2026-09-24T17:26:41.614952+00:00",
-        "ended_at": "2026-09-24T17:26:41.662016+00:00",
+        "started_at": "2026-09-24T18:26:41.331509+00:00",
+        "ended_at": "2026-09-24T18:26:41.370531+00:00",
         "reason": "outcome 'ambiguous_duplicate' requires human review: More than one member record matched; automation should not guess which one."
       },
       {
         "holder": "automation",
-        "started_at": "2026-09-24T17:26:41.662016+00:00",
-        "ended_at": "2026-09-24T17:26:41.759640+00:00",
+        "started_at": "2026-09-24T18:26:41.370531+00:00",
+        "ended_at": "2026-09-24T18:26:41.461392+00:00",
         "reason": "operator handed control back"
       }
     ],

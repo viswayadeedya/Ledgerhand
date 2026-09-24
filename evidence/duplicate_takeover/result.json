@@ -29,11 +29,11 @@
         "decision": "manual_resolved",
         "operator_note": "Reviewed both records and selected the genuine one.",
         "resumed_via": "MockOperatorHandoff",
-        "requested_at": "2026-09-24T17:26:08.604480+00:00",
-        "resolved_at": "2026-09-24T17:26:08.682722+00:00",
+        "requested_at": "2026-09-24T18:26:44.496882+00:00",
+        "resolved_at": "2026-09-24T18:26:44.581658+00:00",
         "operator_actions": [
           {
-            "at": "2026-09-24T17:26:08.674722+00:00",
+            "at": "2026-09-24T18:26:44.571664+00:00",
             "kind": "click",
             "target": "a \"View\"",
             "value": null,
@@ -46,20 +46,20 @@
     "control_timeline": [
       {
         "holder": "automation",
-        "started_at": "2026-09-24T17:26:05.966191+00:00",
-        "ended_at": "2026-09-24T17:26:08.604480+00:00",
+        "started_at": "2026-09-24T18:26:41.863896+00:00",
+        "ended_at": "2026-09-24T18:26:44.496882+00:00",
         "reason": "replay started"
       },
       {
         "holder": "human",
-        "started_at": "2026-09-24T17:26:08.604480+00:00",
-        "ended_at": "2026-09-24T17:26:08.682722+00:00",
+        "started_at": "2026-09-24T18:26:44.496882+00:00",
+        "ended_at": "2026-09-24T18:26:44.581658+00:00",
         "reason": "outcome 'ambiguous_duplicate' requires human review: More than one member record matched; automation should not guess which one."
       },
       {
         "holder": "automation",
-        "started_at": "2026-09-24T17:26:08.682722+00:00",
-        "ended_at": "2026-09-24T17:26:08.811079+00:00",
+        "started_at": "2026-09-24T18:26:44.581658+00:00",
+        "ended_at": "2026-09-24T18:26:44.696364+00:00",
         "reason": "operator handed control back"
       }
     ],

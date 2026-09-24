@@ -1633,3 +1633,34 @@ scenario with a real run behind it, and nothing beyond that list.
   sit in the scoreboard looking like instability.
 - **Reuses `run_evidence`'s app lifecycle and fault helpers by importing
   it**, rather than copying the start/reset/arm logic into a second script.
+- **"No fault" is an entry in the pool like any other**, so clean runs are
+  guaranteed alongside the faults -- two of them in a 20-run pass. Worth
+  being explicit about in the scoreboard's own text: a stability report
+  made entirely of injected failures would let a regression that only
+  breaks the happy path pass unnoticed.
+
+### Step 8 — a table that can disagree with itself
+
+- **The whole README is generated, not a hand-written page with a
+  generated table in it.** The `Actual` and `Exit` columns are the only
+  reason the document is worth reading, and they are worth reading only
+  because nobody typed them. Leaving the surrounding prose hand-maintained
+  would have left a half that drifts every time a scenario is added.
+- **`Expected` and `Actual` are separate columns filled from separate
+  sources.** Expected is what the scenario declares; actual is read back
+  out of that run's own `result.json` afterwards. Collapsing them into one
+  "result" column, or filling actual from the runner's intention, produces
+  a table that cannot disagree with itself -- which is the only thing it is
+  for.
+- **A test asserts the committed README is what the generator produces.**
+  "Do not edit by hand" in a comment is a request; this makes it a
+  failure. A README that has drifted from its index is worse than none,
+  because it reads exactly as authoritatively.
+- **The brief's own list of runtime conditions is asserted, not just
+  described.** A docstring claiming one scenario per named condition stops
+  being true the moment someone deletes one; the test names all eight and
+  fails if any loses its scenario.
+- **The failure-screenshot check exempts `invalid_input` explicitly**, with
+  the reason in the test: it is rejected before a browser opens, so there
+  is nothing to photograph. That is the feature the scenario exists to
+  demonstrate, and an unexplained exemption would look like a gap.

@@ -1,5 +1,5 @@
 {
-  "recorded_at": "2026-09-24T17:25:00.521163+00:00",
+  "recorded_at": "2026-09-24T18:25:36.190039+00:00",
   "artifact_id": "member-savings-lookup",
   "artifact_version": 4,
   "inputs": {
@@ -17,8 +17,8 @@
     "control_timeline": [
       {
         "holder": "automation",
-        "started_at": "2026-09-24T17:24:57.019190+00:00",
-        "ended_at": "2026-09-24T17:25:00.521163+00:00",
+        "started_at": "2026-09-24T18:25:32.540486+00:00",
+        "ended_at": "2026-09-24T18:25:36.190039+00:00",
         "reason": "replay started"
       }
     ],

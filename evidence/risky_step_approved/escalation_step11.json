@@ -6,7 +6,7 @@
   "business_outcome": null,
   "current_url": "http://127.0.0.1:5055/app",
   "screenshot_path": "C:\\Users\\viswa\\Documents\\Ledgerhand\\evidence\\runs\\risky_step_approved\\step_013.png",
-  "requested_at": "2026-09-24T17:26:14.416354+00:00",
+  "requested_at": "2026-09-24T18:26:50.263761+00:00",
   "decision": {
     "action": "approve_and_retry",
     "operator_note": "Verified with the member in branch; approved opening the sub-account."
@@ -15,13 +15,13 @@
   "control_timeline": [
     {
       "holder": "human",
-      "started_at": "2026-09-24T17:26:14.416354+00:00",
-      "ended_at": "2026-09-24T17:26:14.470537+00:00",
+      "started_at": "2026-09-24T18:26:50.263761+00:00",
+      "ended_at": "2026-09-24T18:26:50.305030+00:00",
       "reason": "blocked by policy (click on role='Confirm & Open Account' in frame 'main'): route '/app/member/10001/new-subaccount/commit' is risky/irreversible and requires human approval"
     },
     {
       "holder": "automation",
-      "started_at": "2026-09-24T17:26:14.470537+00:00",
+      "started_at": "2026-09-24T18:26:50.305030+00:00",
       "ended_at": null,
       "reason": "operator handed control back"
     }

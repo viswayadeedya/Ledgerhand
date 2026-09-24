@@ -2,7 +2,7 @@ Outcome: recovered
 Steps executed: 6/7
 Escalation: manual_resolved -- Reviewed both records and selected the genuine one.
   operator click: a "View"
-Control: automation 2026-09-24T17:26:05.966191+00:00 -> 2026-09-24T17:26:08.604480+00:00 (replay started)
-Control: human 2026-09-24T17:26:08.604480+00:00 -> 2026-09-24T17:26:08.682722+00:00 (outcome 'ambiguous_duplicate' requires human review: More than one member record matched; automation should not guess which one.)
-Control: automation 2026-09-24T17:26:08.682722+00:00 -> 2026-09-24T17:26:08.811079+00:00 (operator handed control back)
+Control: automation 2026-09-24T18:26:41.863896+00:00 -> 2026-09-24T18:26:44.496882+00:00 (replay started)
+Control: human 2026-09-24T18:26:44.496882+00:00 -> 2026-09-24T18:26:44.581658+00:00 (outcome 'ambiguous_duplicate' requires human review: More than one member record matched; automation should not guess which one.)
+Control: automation 2026-09-24T18:26:44.581658+00:00 -> 2026-09-24T18:26:44.696364+00:00 (operator handed control back)
 Outputs: {"member_id": "***01 [shape: integer]", "member_name": "***ia [shape: text]", "savings_balance": "***18 [shape: money]", "checking_balance": "***44 [shape: money]"}
