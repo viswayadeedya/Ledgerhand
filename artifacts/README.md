@@ -2,9 +2,26 @@
 
 Each `.yaml` file here is a **capability**: a typed, versioned, reviewable
 description of one reusable flow, produced by `cua.artifacts.build_artifact`
-from a discovery run's log (`python -m cua.agent ... --evidence-dir ...`,
-then `python -m cua.artifacts`). Part 6 (replay) executes these without an
-LLM in the loop.
+from a recorded run. Part 6 (replay) executes these without an LLM in the
+loop.
+
+| Capability | Reads or writes | How its run was produced |
+|---|---|---|
+| [`member-savings-lookup.yaml`](member-savings-lookup.yaml) | Reads a member's balances | A **genuine LLM discovery run** (`claude-sonnet-5`), the one the brief requires — [`evidence/discovery-member-lookup/`](../evidence/discovery-member-lookup/) |
+| [`member-subaccount-open.yaml`](member-subaccount-open.yaml) | **Opens a sub-account** — irreversible | **Deterministic capture**, no LLM — [`scripts/capture_subaccount_capability.py`](../scripts/capture_subaccount_capability.py) |
+
+The second is deliberately not a second discovery run, and the script says
+why at length: its whole purpose is to reach a guardrail-blocked
+irreversible action, which discovery cannot do unattended — policy refuses
+the commit and the model has no handoff path during discovery, so the run
+would stall at exactly the step the artifact needs to record. Its step
+order and locator candidates are hand-chosen; everything the recorder
+derives (parameterization, URL canonicalization, step descriptions, risk
+labels, output locators, checkpoint) is derived the same way as for the
+discovered one, from real captured observations. Every hand-chosen locator
+is resolved against the live page during capture under the same strict
+"exactly one match or fail" rule replay uses, so one that doesn't really
+work fails the script rather than shipping.
 
 ## Reading one
 
@@ -68,7 +85,20 @@ LLM in the loop.
 - `provenance` -- when/which model discovered this, and a pointer back to
   the run log it came from, for audit.
 
-## How this one was built
+## How `member-subaccount-open.yaml` was built
+
+```
+# Needs the fake app running. Resets the app afterward -- the capture
+# really does open an account.
+python scripts/capture_subaccount_capability.py
+```
+
+One command, because there are no business outcomes to attach. The commit
+step is executed with `human_approved=True` for the capture only; the
+artifact records it as `risk: risky`, and every replay is blocked at it
+until a human approves — which is the point of the capability.
+
+## How `member-savings-lookup.yaml` was built
 
 This file is never hand-edited. Every change to it goes through the
 recorder or a capture script and bumps `version`, so what's committed is

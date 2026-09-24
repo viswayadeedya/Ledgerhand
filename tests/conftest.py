@@ -62,6 +62,17 @@ def arm_fault(base_url: str, fault: str, armed: bool) -> None:
     urllib.request.urlopen(req)
 
 
+def reset_app(base_url: str) -> None:
+    """Puts member data, faults and settings back to their seeded state.
+
+    Needed because `fake_app_server` is module-scoped: tests share one live
+    app, so a test that opens a sub-account changes what the *next* one
+    sees. Any test asserting on state a previous test can have written has
+    to establish its own preconditions rather than inherit them.
+    """
+    urllib.request.urlopen(urllib.request.Request(f"{base_url}/admin/reset", method="POST"))
+
+
 def set_setting(base_url: str, name: str, value: float) -> None:
     req = urllib.request.Request(
         f"{base_url}/admin/settings/api",

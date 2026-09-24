@@ -1396,3 +1396,93 @@ scenario with a real run behind it, and nothing beyond that list.
   means capturing browser-level events (CDP transition types, plus the
   existing dialog handler feeding the same log) -- a bigger seam than this
   needs, and better stated than quietly missing.
+
+### Step 5 — a capability whose whole point is being blocked
+
+- **`artifacts/member-subaccount-open.yaml` exists because nothing else
+  reached the risky route.** The only committed artifact was a read-only
+  lookup, and the only thing exercising `*/new-subaccount/commit` was a
+  synthetic artifact built in Python inside `tests/conftest.py` -- never
+  written to disk, so `risky_step_approved` had nothing to replay.
+- **Deterministic capture, not a second discovery run**, and the script
+  says so at length rather than leaving it to be inferred. The brief
+  requires *one* genuine LLM run and that one exists. This capability's
+  purpose is to reach a guardrail-blocked irreversible action, which
+  discovery cannot do unattended: policy refuses the commit and the model
+  has no handoff path during discovery, so the run would stall at exactly
+  the step the artifact needs to record.
+- **What is hand-chosen is stated, not glossed.** The step order and each
+  step's ranked locator candidates are written by hand. They are not
+  hand-waved: every one resolves against the live page during capture under
+  the same strict "exactly one match or fail" rule replay uses, so a
+  candidate that doesn't really work fails the script instead of shipping.
+  Everything the recorder derives for a discovered artifact is still
+  derived here -- parameterization, canonicalization, descriptions, risk
+  labels through the real PolicyEngine, output locators, checkpoint.
+- **The flow goes through the app's own screens** (search -> View -> Open
+  New Sub-Account) rather than navigating straight to the form. It crosses
+  frames the way the real task does, and it gives the recorder genuine
+  before/after observations to judge each step's destination from -- which
+  is what produced the single `risk: risky` label on the commit, correctly
+  canonicalized to `/app/member/:member_id/new-subaccount/commit`.
+
+#### Two real leaks this capture found, both in code that already shipped
+
+- **The password went into the artifact.** `_parameterize_value` replaces a
+  literal only when the caller passes it in `secret_values`. A discovery
+  run gets away with declaring only the username because `browser_tools`
+  redacts the password to `{{secrets.password}}` *before* it is ever
+  recorded -- so the recorder never sees the real one. A capture script
+  drives the surface directly, where nothing redacts anything, and one
+  missing entry put a live credential into a committed file twice: in the
+  step's `value` and in the generated description ("Enter the recorded
+  value 'teller123'..."). Exactly the Part 4 lesson again -- a secret
+  reaches a file by more than one path, and fixing the path you are looking
+  at is not the same as fixing the value.
+  Fixed structurally, not just in the script: `build_artifact` now refuses
+  an artifact that declares a secret no step references as
+  `{{secrets.<name>}}`. Declared-but-absent is the precise signature of the
+  mistake -- the flow plainly used the secret to get where it got, so if no
+  step references it, it went in as a literal under some other guise.
+- **`prefer_table_position` stopped preferring table positions.**
+  `find_target_for_text` took the *first* element containing the value, and
+  the success page announces itself in prose above the table
+  ("Sub-account #4001 opened for ... (ID 10001)"). Prose has no table
+  position, so the search fell straight through to a `TEXT` candidate
+  pinned to `"4001"` and `"10001"` -- the value-locking bug the flag exists
+  to prevent, reintroduced by search order rather than by the missing
+  branch it was written for. It never bit before because the member detail
+  page has no prose repeating its values. Fixed with two passes: positioned
+  elements first, prose only as fallback, both directions tested.
+- **Sub-account numbers start at 4001, not 1.** Not cosmetic: output
+  locators are found by substring-matching the captured page, and `"1"` is
+  contained in the member ID `"10001"` two rows above, so a one-digit
+  number resolves to the wrong cell. Realistic numbers are also what a real
+  system produces.
+- **The success page gained a details table.** Without one, the only place
+  the confirmed values appeared was the prose headline, and a locator built
+  from that is pinned to one run's numbers. This is a change to the app's
+  surface rather than to a fault, made so the capability can have real
+  label-anchored outputs and -- more importantly -- an identity assertion.
+  That matters more here than on the lookup: this capability *changes*
+  something, and opening an account on the wrong member is not a mistake a
+  later read can undo.
+- **`initial_deposit`'s pattern rejects non-amounts, not amounts below the
+  minimum.** The app owns the 25.00 rule and answers with its own
+  validation page; encoding it in the artifact too would be the capability
+  quietly asserting a business rule it doesn't own, and the two would drift.
+- **The capture resets the app afterward.** It really does open an account;
+  leaving it there would make the next capture record sub-account 4002.
+- **Evidence for the scenario comes from `scripts/run_evidence` in step 6**,
+  not a bespoke script here. Step 5's deliverable is the artifact and the
+  end-to-end proof in tests; producing a folder for it twice is exactly the
+  duplication the evidence rewrite is meant to remove.
+- **A test-isolation bug this step introduced, kept as a note because the
+  fix is a rule not a patch.** The new sub-account test asserted the
+  confirmed number was 4001 and got 4002: `fake_app_server` is
+  module-scoped, and an earlier test in the same file already opens a
+  sub-account for the same member. A test asserting on state an earlier
+  test can have written has to establish its own preconditions rather than
+  inherit them -- hence `reset_app()` in conftest, called by the tests that
+  depend on the seeded state. Worth recording because the failure looked
+  like a fake-app numbering bug and was a test-ordering one.

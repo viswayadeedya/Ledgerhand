@@ -2,5 +2,11 @@
 <html><head>{% include "_style.html" %}</head>
 <body>
 <p><b>Sub-account #{{ sub_account_number }} opened</b> for {{ member.first_name }} {{ member.last_name }} (ID {{ member.id }}).</p>
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><td><b>Member ID</b></td><td>{{ member.id }}</td></tr>
+<tr><td><b>Sub-Account Number</b></td><td>{{ sub_account_number }}</td></tr>
+<tr><td><b>Account Type</b></td><td>{{ account_type }}</td></tr>
+<tr><td><b>Initial Deposit</b></td><td>${{ "%.2f"|format(initial_deposit) }}</td></tr>
+</table>
 <p><a href="/app/member/{{ member.id }}" target="main">Return to Member</a></p>
 </body></html>

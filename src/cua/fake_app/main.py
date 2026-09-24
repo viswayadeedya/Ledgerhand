@@ -256,7 +256,12 @@ async def subaccount_commit(
     return templates.TemplateResponse(
         request,
         "subaccount_success.html",
-        {"member": member, "sub_account_number": number},
+        {
+            "member": member,
+            "sub_account_number": number,
+            "account_type": account_type,
+            "initial_deposit": float(initial_deposit),
+        },
     )
 
 

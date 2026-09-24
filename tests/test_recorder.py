@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from cua.artifacts.recorder import ArtifactBuildError, build_artifact
+from cua.artifacts.recorder import ArtifactBuildError, build_artifact, find_target_for_text
 from cua.artifacts.schema import (
     CURRENT_SCHEMA_VERSION,
     CapabilityArtifact,
@@ -589,3 +589,63 @@ def test_version_refusals_name_the_version_and_what_to_do():
     message = str(exc.value)
     assert "2.0" in message and CURRENT_SCHEMA_VERSION in message
     assert "python -m cua.artifacts" in message  # how to fix it
+
+
+# -- Phase 5 step 5: two leaks the sub-account capture found --------------
+
+
+def _observation_with_prose_above_a_table() -> Observation:
+    """A result page that announces itself in prose before repeating the
+    values in a table -- the shape that broke output locators.
+    """
+    return Observation(
+        url="http://127.0.0.1:5055/app/member/10001/new-subaccount/commit",
+        elements=[
+            ElementSummary(tag="p", text="Sub-account #4001 opened for Maria Garcia (ID 10001).", frame="main"),
+            ElementSummary(tag="td", text="Sub-Account Number", frame="main", table_row=1, table_col=0),
+            ElementSummary(tag="td", text="4001", frame="main", table_row=1, table_col=1),
+        ],
+    )
+
+
+def test_an_output_prefers_the_table_cell_over_prose_that_mentions_it():
+    """The prose comes first in the DOM and contains the value, so a
+    single-pass search matched it and fell through to a TEXT candidate
+    pinned to "4001" -- which is the exact value-locking failure
+    prefer_table_position exists to prevent, reintroduced by search order.
+    """
+    target = find_target_for_text(
+        _observation_with_prose_above_a_table(), "4001", prefer_table_position=True
+    )
+
+    strategies = [c.strategy for c in target.candidates]
+    assert LocatorStrategy.TABLE_LABEL in strategies
+    assert LocatorStrategy.TEXT not in strategies
+    assert target.candidates[0].value == "label=Sub-Account Number,col=1"
+
+
+def test_prose_is_still_used_when_there_is_no_table_cell():
+    """The fallback has to survive: a value that genuinely only appears in
+    prose still needs a locator.
+    """
+    observation = Observation(
+        url="http://127.0.0.1:5055/x",
+        elements=[ElementSummary(tag="p", text="Sub-account #4001 opened.", frame="main")],
+    )
+    target = find_target_for_text(observation, "4001", prefer_table_position=True)
+    assert [c.strategy for c in target.candidates] == [LocatorStrategy.TEXT]
+
+
+def test_a_declared_secret_that_never_got_parameterized_is_refused(real_run):
+    """The signature of a live credential going into a committed file.
+
+    Parameterization replaces a literal only when the caller supplies it in
+    secret_values. A discovery run gets away without one for the password
+    because the browser tools redact it before recording; a capture script
+    driving the surface directly has nothing doing that, so one missing
+    entry put the real password into the step value and into the generated
+    description. Declared-but-never-referenced is exactly that mistake.
+    """
+    data, steps = real_run
+    with pytest.raises(ArtifactBuildError, match="never appear as"):
+        _build(data, steps, secret_names=["username", "password", "totp_code"])

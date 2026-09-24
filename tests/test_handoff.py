@@ -5,7 +5,7 @@ from urllib.parse import urlsplit, urlunsplit
 import pytest
 import yaml
 
-from cua.artifacts.schema import CapabilityArtifact, load_yaml
+from cua.artifacts.schema import CapabilityArtifact, StepRisk, load_yaml
 from cua.core.models import ActionType
 from cua.handoff import (
     ControlHolder,
@@ -17,6 +17,7 @@ from cua.handoff import (
 from cua.replay.engine import ReplayEngine
 from cua.replay.models import ReplayOutcome
 from tests.conftest import arm_fault as _arm_fault
+from tests.conftest import reset_app as _reset_app
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ARTIFACT_PATH = REPO_ROOT / "artifacts" / "member-savings-lookup.yaml"
@@ -368,3 +369,105 @@ def test_actions_on_a_page_opened_during_the_handoff_are_still_recorded(
     assert clicked, "a click on a page opened during the handoff recorded nothing"
     assert any("Open New Sub-Account" in a.target for a in clicked)
     assert any("10002" in (a.url or "") for a in clicked)
+
+
+# -- Phase 5 step 5: the risky step, on the real committed artifact -------
+
+SUBACCOUNT_ARTIFACT_PATH = REPO_ROOT / "artifacts" / "member-subaccount-open.yaml"
+
+
+@pytest.fixture
+def subaccount(fake_app_server) -> CapabilityArtifact:
+    raw = load_yaml(SUBACCOUNT_ARTIFACT_PATH.read_text(encoding="utf-8"))
+    return _retarget(raw, fake_app_server.replace("http://", ""))
+
+
+SUBACCOUNT_INPUTS = {"member_id": "10001", "account_type": "checking", "initial_deposit": "250.00"}
+
+
+def test_the_shipped_subaccount_artifact_marks_exactly_one_step_risky(subaccount):
+    """The label is review metadata, and it is only worth anything if it
+    points at the commit rather than at everything or nothing.
+    """
+    risky = [s for s in subaccount.steps if s.risk == StepRisk.RISKY]
+    assert len(risky) == 1
+    assert "commit" in risky[0].risk_note
+    # Canonicalized: the route, not the member whose record was recorded.
+    assert "10001" not in risky[0].risk_note
+
+
+def test_subaccount_commit_is_blocked_without_a_human(test_policy, tmp_path, subaccount):
+    """No handoff configured: the irreversible step stops the run rather
+    than going through. This is the baseline the approval below changes.
+    """
+    engine = ReplayEngine(policy=test_policy, headless=True, evidence_dir=tmp_path)
+    result = engine.run(subaccount, inputs=SUBACCOUNT_INPUTS, secrets=SECRETS)
+
+    assert result.outcome == ReplayOutcome.NEEDS_HUMAN
+    assert result.error.reason_code.value == "policy_blocked"
+    assert result.steps_executed < len(subaccount.steps)  # it never reached the end
+
+
+def test_subaccount_commit_blocked_then_approved_then_the_run_completes(
+    test_policy, tmp_path, subaccount, fake_app_server
+):
+    """The whole risky-step story end to end, on the file that ships:
+    policy refuses the commit, a human approves, automation performs it,
+    and the run reads the confirmation off the real success page.
+    """
+    # The app is module-scoped and an earlier test in this file opens a
+    # sub-account for the same member, so 4001 is only the right answer for
+    # a test that establishes its own starting state.
+    _reset_app(fake_app_server)
+    seen = {}
+
+    def operator(request: EscalationRequest, surface) -> HandoffDecision:
+        seen["reason"] = request.reason
+        return HandoffDecision(
+            action=HandoffAction.APPROVE_AND_RETRY,
+            operator_note="Verified with the member in branch; approved.",
+        )
+
+    engine = ReplayEngine(
+        policy=test_policy, headless=True, evidence_dir=tmp_path,
+        handoff=MockOperatorHandoff(operator, evidence_dir=tmp_path),
+    )
+    result = engine.run(subaccount, inputs=SUBACCOUNT_INPUTS, secrets=SECRETS)
+
+    assert result.outcome == ReplayOutcome.RECOVERED
+    assert "policy" in seen["reason"].lower()
+    assert result.escalations[0].decision == HandoffAction.APPROVE_AND_RETRY
+
+    # The account really was opened, and the app says so in its own words.
+    assert result.outputs["sub_account_number"] == "4001"
+    assert result.outputs["account_type"] == "checking"
+    assert result.outputs["initial_deposit"] == "$250.00"
+    # And on the right member -- the assertion that matters most for a
+    # capability that changes something rather than reading it.
+    assert result.outputs["member_id"] == "10001"
+
+    holders = [s.holder for s in result.control_timeline]
+    assert holders == [ControlHolder.AUTOMATION, ControlHolder.HUMAN, ControlHolder.AUTOMATION]
+
+
+def test_opening_a_subaccount_on_the_wrong_member_is_refused(
+    test_policy, tmp_path, subaccount, fake_app_server
+):
+    """The identity assertion, on a capability that writes. A read that
+    lands on the wrong record returns the wrong number; a write that does
+    has already changed something -- so the check has to be on the
+    confirmation the app gives back, not on where we thought we were.
+    """
+    _arm_fault(fake_app_server, "wrong_member", True)
+
+    def operator(request: EscalationRequest, surface) -> HandoffDecision:
+        return HandoffDecision(action=HandoffAction.APPROVE_AND_RETRY, operator_note="Approved.")
+
+    engine = ReplayEngine(
+        policy=test_policy, headless=True, evidence_dir=tmp_path,
+        handoff=MockOperatorHandoff(operator, evidence_dir=tmp_path),
+    )
+    result = engine.run(subaccount, inputs=SUBACCOUNT_INPUTS, secrets=SECRETS)
+
+    assert result.outcome == ReplayOutcome.HARD_FAILURE
+    assert result.outputs == {}  # nothing about the wrong record reaches the caller

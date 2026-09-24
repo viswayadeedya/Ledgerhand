@@ -103,6 +103,7 @@ def build_artifact(
 
     policy = policy or PolicyEngine()
     parameterized_steps = _build_steps(steps, inputs, secret_values, policy)
+    _check_secrets_were_parameterized(parameterized_steps, secret_names)
 
     final_observation = _last_observation(steps)
     if final_observation is None:
@@ -165,6 +166,36 @@ def build_artifact(
             source_run_log=source_run_log,
         ),
     )
+
+
+def _check_secrets_were_parameterized(steps: list[ArtifactStep], secret_names: list[str]) -> None:
+    """Refuses an artifact that declares a secret no step actually uses.
+
+    Catches a real leak with a real cause. Parameterization replaces a
+    literal only when the caller supplies that literal in `secret_values`;
+    a discovery run gets away without one for the password because the
+    browser tools already redacted it to `{{secrets.password}}` before it
+    was ever recorded. A deterministic capture script drives the surface
+    directly, where nothing redacts anything -- so forgetting one entry in
+    `secret_values` put a live credential into a committed file, in the
+    step value *and* in the generated description.
+
+    Declared-but-absent is the precise signature of that mistake: the flow
+    plainly used the secret to get where it got, so if no step references
+    it, the value went in as a literal under some other guise.
+    """
+    referenced = {
+        match
+        for step in steps
+        for match in re.findall(r"\{\{secrets\.(\w+)\}\}", step.value or "")
+    }
+    missing = [name for name in secret_names if name not in referenced]
+    if missing:
+        raise ArtifactBuildError(
+            f"declared secret(s) {', '.join(missing)} never appear as {{{{secrets.<name>}}}} in any "
+            f"step, which usually means the literal was recorded instead of being parameterized. "
+            f"Pass the value in secret_values so the recorder can recognize and replace it."
+        )
 
 
 def _check_input_contract(
@@ -572,11 +603,30 @@ def find_target_for_text(observation: Observation, text: str, prefer_table_posit
     needle = _normalize(text)
     if not needle:
         return None
-    for element in observation.elements:
-        if element.tag in _NON_TEXT_EXTRACTABLE_TAGS:
-            continue
+
+    candidates_in_order = [
+        element
+        for element in observation.elements
+        if element.tag not in _NON_TEXT_EXTRACTABLE_TAGS
+        and _normalize(element.text or "")
+        and (_normalize(element.text or "") == needle or needle in _normalize(element.text or ""))
+    ]
+    if prefer_table_position:
+        # Two passes, because "first element that contains the text" is not
+        # the same as "the cell holding this value". A page that announces
+        # the result in prose above the table -- "Sub-account #4001 opened
+        # for ... (ID 10001)" -- matches the prose first, and prose has no
+        # table position, so a single pass silently fell through to a TEXT
+        # candidate locked to that exact literal. That is the value-locking
+        # bug this flag exists to prevent, reintroduced by the search order.
+        positioned = [
+            e for e in candidates_in_order if e.table_row is not None and e.table_col is not None
+        ]
+        candidates_in_order = positioned + [e for e in candidates_in_order if e not in positioned]
+
+    for element in candidates_in_order:
         haystack = _normalize(element.text or "")
-        if haystack and (haystack == needle or needle in haystack):
+        if haystack:
             has_position = element.table_row is not None and element.table_col is not None
             if prefer_table_position and has_position:
                 # TEXT is deliberately NOT included as a fallback here: it
