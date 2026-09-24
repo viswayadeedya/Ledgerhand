@@ -439,7 +439,7 @@ def test_subaccount_commit_blocked_then_approved_then_the_run_completes(
     assert result.escalations[0].decision == HandoffAction.APPROVE_AND_RETRY
 
     # The account really was opened, and the app says so in its own words.
-    assert result.outputs["sub_account_number"] == "4001"
+    assert result.outputs["sub_account_number"] == "1"
     assert result.outputs["account_type"] == "checking"
     assert result.outputs["initial_deposit"] == "$250.00"
     # And on the right member -- the assertion that matters most for a

@@ -565,6 +565,21 @@ def _normalize(text: str) -> str:
 _NON_TEXT_EXTRACTABLE_TAGS = {"input", "select", "textarea"}
 
 
+def _text_matches(element, needle: str, exact: bool) -> bool:
+    """Whether an element's text is what we're looking for.
+
+    `exact` is the difference between searching for a value and searching
+    for a phrase. A value occupies its whole cell, so anything less than
+    equality lets a short one resolve to a longer one containing it; a
+    checkpoint phrase is deliberately a fragment of a longer sentence, so
+    equality would never match it.
+    """
+    haystack = _normalize(element.text or "")
+    if not haystack:
+        return False
+    return haystack == needle if exact else (haystack == needle or needle in haystack)
+
+
 def _label_cell_text(observation: Observation, value_element) -> str | None:
     """The cell immediately to the left of a value, in the same row and
     frame -- "Savings Balance" for the cell holding "$2340.18".
@@ -599,26 +614,34 @@ def find_target_for_text(observation: Observation, text: str, prefer_table_posit
     usually a static label, not a value that changes), so they keep
     preferring TEXT, which is also the more human-readable strategy to
     review.
+
+    The two searches also match differently, and must. Looking for an
+    output's *value* requires the element's whole trimmed text to equal it
+    -- the same exactly-this-cell rule TABLE_LABEL uses -- because a value
+    is the entire content of the cell holding it, and substring matching
+    makes short values resolve to longer ones that merely contain them
+    ("1" is inside the member ID "10001"). Looking for a *checkpoint* or a
+    business outcome keeps substring matching, because those are
+    deliberately stable fragments of a longer sentence ("No member found"
+    inside 'No member found matching "99999".').
     """
     needle = _normalize(text)
     if not needle:
         return None
 
+    exact = prefer_table_position
     candidates_in_order = [
         element
         for element in observation.elements
-        if element.tag not in _NON_TEXT_EXTRACTABLE_TAGS
-        and _normalize(element.text or "")
-        and (_normalize(element.text or "") == needle or needle in _normalize(element.text or ""))
+        if element.tag not in _NON_TEXT_EXTRACTABLE_TAGS and _text_matches(element, needle, exact)
     ]
     if prefer_table_position:
-        # Two passes, because "first element that contains the text" is not
-        # the same as "the cell holding this value". A page that announces
-        # the result in prose above the table -- "Sub-account #4001 opened
-        # for ... (ID 10001)" -- matches the prose first, and prose has no
-        # table position, so a single pass silently fell through to a TEXT
-        # candidate locked to that exact literal. That is the value-locking
-        # bug this flag exists to prevent, reintroduced by the search order.
+        # Positioned cells first. Exact matching already rules out the
+        # prose that merely mentions a value, but a page can legitimately
+        # show the same value twice -- once in a cell, once loose -- and
+        # only the cell yields a content-independent locator. Falling back
+        # to the loose one would quietly pin the locator to this run's
+        # value, which is the failure this flag exists to prevent.
         positioned = [
             e for e in candidates_in_order if e.table_row is not None and e.table_col is not None
         ]

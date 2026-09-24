@@ -594,46 +594,82 @@ def test_version_refusals_name_the_version_and_what_to_do():
 # -- Phase 5 step 5: two leaks the sub-account capture found --------------
 
 
-def _observation_with_prose_above_a_table() -> Observation:
-    """A result page that announces itself in prose before repeating the
-    values in a table -- the shape that broke output locators.
+def _sub_account_success_observation() -> Observation:
+    """The real shape of the sub-account confirmation page: prose that
+    mentions both values, then a table holding each one on its own.
     """
     return Observation(
         url="http://127.0.0.1:5055/app/member/10001/new-subaccount/commit",
         elements=[
-            ElementSummary(tag="p", text="Sub-account #4001 opened for Maria Garcia (ID 10001).", frame="main"),
+            ElementSummary(tag="p", text="Sub-account #1 opened for Maria Garcia (ID 10001).", frame="main"),
+            ElementSummary(tag="td", text="Member ID", frame="main", table_row=0, table_col=0),
+            ElementSummary(tag="td", text="10001", frame="main", table_row=0, table_col=1),
             ElementSummary(tag="td", text="Sub-Account Number", frame="main", table_row=1, table_col=0),
-            ElementSummary(tag="td", text="4001", frame="main", table_row=1, table_col=1),
+            ElementSummary(tag="td", text="1", frame="main", table_row=1, table_col=1),
         ],
     )
 
 
-def test_an_output_prefers_the_table_cell_over_prose_that_mentions_it():
-    """The prose comes first in the DOM and contains the value, so a
-    single-pass search matched it and fell through to a TEXT candidate
-    pinned to "4001" -- which is the exact value-locking failure
-    prefer_table_position exists to prevent, reintroduced by search order.
+def test_a_short_value_does_not_resolve_to_a_longer_one_containing_it():
+    """"1" is a substring of the member ID "10001" one row above, and of
+    the prose above that. A value occupies its whole cell, so the search
+    for one requires the cell's entire trimmed text to equal it -- the same
+    exactly-this-cell rule TABLE_LABEL uses. Substring matching made a
+    one-digit number resolve to the wrong row.
     """
-    target = find_target_for_text(
-        _observation_with_prose_above_a_table(), "4001", prefer_table_position=True
+    target = find_target_for_text(_sub_account_success_observation(), "1", prefer_table_position=True)
+
+    assert target.candidates[0].strategy == LocatorStrategy.TABLE_LABEL
+    assert target.candidates[0].value == "label=Sub-Account Number,col=1"
+    # Not the Member ID row, and not the prose.
+    assert "row=1,col=1" in [c.value for c in target.candidates]
+
+
+def test_an_output_prefers_the_table_cell_over_prose_that_mentions_it():
+    """Exact matching rules out prose that merely contains the value; this
+    covers the case it can't -- the same value appearing twice, once loose
+    and once in a cell. Only the cell yields a content-independent locator.
+    """
+    observation = Observation(
+        url="http://127.0.0.1:5055/x",
+        elements=[
+            ElementSummary(tag="p", text="10001", frame="main"),  # loose, no position
+            ElementSummary(tag="td", text="Member ID", frame="main", table_row=0, table_col=0),
+            ElementSummary(tag="td", text="10001", frame="main", table_row=0, table_col=1),
+        ],
     )
+    target = find_target_for_text(observation, "10001", prefer_table_position=True)
 
     strategies = [c.strategy for c in target.candidates]
     assert LocatorStrategy.TABLE_LABEL in strategies
     assert LocatorStrategy.TEXT not in strategies
-    assert target.candidates[0].value == "label=Sub-Account Number,col=1"
 
 
 def test_prose_is_still_used_when_there_is_no_table_cell():
-    """The fallback has to survive: a value that genuinely only appears in
-    prose still needs a locator.
+    """The fallback has to survive: a value that genuinely only appears
+    outside a table still needs a locator -- see the prose-only limit noted
+    in DECISIONS.md.
     """
     observation = Observation(
         url="http://127.0.0.1:5055/x",
-        elements=[ElementSummary(tag="p", text="Sub-account #4001 opened.", frame="main")],
+        elements=[ElementSummary(tag="p", text="1", frame="main")],
     )
-    target = find_target_for_text(observation, "4001", prefer_table_position=True)
+    target = find_target_for_text(observation, "1", prefer_table_position=True)
     assert [c.strategy for c in target.candidates] == [LocatorStrategy.TEXT]
+
+
+def test_a_checkpoint_phrase_still_matches_as_a_substring():
+    """The other half of the rule. Checkpoints and business outcomes are
+    deliberately stable fragments of a longer sentence, so tightening the
+    value search must not tighten theirs -- "No member found" has to keep
+    matching 'No member found matching "99999".'
+    """
+    observation = Observation(
+        url="http://127.0.0.1:5055/x",
+        elements=[ElementSummary(tag="p", text='No member found matching "99999".', frame="main")],
+    )
+    target = find_target_for_text(observation, "No member found")
+    assert target.candidates[0].value == "No member found"
 
 
 def test_a_declared_secret_that_never_got_parameterized_is_refused(real_run):

@@ -209,5 +209,5 @@ checkpoint:
     value: opened
 checkpoint_description: Page shows text matching "opened".
 provenance:
-  discovered_at: '2026-09-24T05:39:12.720853+00:00'
+  discovered_at: '2026-09-24T14:50:35.707286+00:00'
   discovery_model: deterministic-capture (no LLM; see scripts/capture_subaccount_capability.py)

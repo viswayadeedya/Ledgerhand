@@ -1486,3 +1486,56 @@ scenario with a real run behind it, and nothing beyond that list.
   inherit them -- hence `reset_app()` in conftest, called by the tests that
   depend on the seeded state. Worth recording because the failure looked
   like a fake-app numbering bug and was a test-ordering one.
+
+#### Step 5 follow-up: fixing the match rule instead of dodging it
+
+- **Sub-account numbers are back to 1, 2, 3.** Starting them at 4001 made
+  the symptom go away without touching the cause, and left the fake app
+  carrying a comment explaining a recorder bug -- the wrong file to explain
+  it in, and a landmine for the next short value.
+- **The value search now requires the cell's whole trimmed text to equal
+  the value**, the same exactly-this-cell rule `TABLE_LABEL` already uses.
+  A value *is* the entire content of the cell holding it; substring
+  matching let a short one resolve to any longer one containing it, which
+  is how `"1"` found the member ID `"10001"` one row above.
+- **Checkpoints and business outcomes keep substring matching**, and the
+  two rules are now explicitly different rather than accidentally shared.
+  They are looking for opposite things: a value occupies its whole cell,
+  while a checkpoint phrase is deliberately a stable *fragment* of a longer
+  sentence -- `"No member found"` inside `'No member found matching
+  "99999".'`. Tightening both would have broken every business outcome in
+  the repo. Both directions are tested.
+- **The positioned-first pass is kept even though exact matching already
+  rules out the prose.** They cover different cases: exactness stops a
+  value matching text that merely mentions it, while the ordering handles a
+  page that legitimately shows the same value twice, once loose and once in
+  a cell. Only the cell yields a content-independent locator.
+- **Regenerating the lookup artifact produced a timestamp-only diff**,
+  which is the check that mattered: the stricter rule changed nothing about
+  an artifact whose values already occupied their own cells.
+
+#### A limit this created, worth naming
+
+- **Prose-only confirmation has no content-independent locator.** We gave
+  the fake app a details table so the sub-account confirmation could be
+  anchored by label, and real applications often don't have one -- plenty
+  confirm entirely in a sentence ("Sub-account #1 opened for ..."), where
+  the value exists only inside prose. For those, `find_target_for_text`
+  falls back to a `TEXT` candidate pinned to that run's literal, which
+  replays correctly exactly once. Handling them properly needs a different
+  extraction strategy than a locator -- a capture-group pattern against the
+  matched element's text ("Sub-account #(\d+) opened"), declared on the
+  output -- which is a real gap rather than something the current schema
+  expresses badly. Named here rather than papered over, since the fake app
+  having a convenient table is a fact about the fake app.
+
+#### The password leak: not in history
+
+- **Checked rather than assumed.** `git log -S "teller123" -- artifacts/`
+  returns nothing, and the single committed blob of
+  `member-subaccount-open.yaml` greps clean; the branch was also 11 commits
+  ahead of `origin/main`, so nothing had been pushed anywhere. The leaking
+  version existed only in the working tree between writing it and reading
+  it, and was fixed before the first `git add`. No history rewrite was
+  needed -- recorded because "we checked and it was clean" and "we didn't
+  look" are indistinguishable afterwards otherwise.

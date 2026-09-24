@@ -43,16 +43,5 @@ def search_by_last_name(last_name: str) -> list[dict]:
     return [m for m in MEMBERS.values() if m["last_name"].lower() == needle]
 
 
-SUB_ACCOUNT_BASE = 4000
-"""Sub-account numbers start at 4001 rather than 1.
-
-Not cosmetic. A capability that extracts the number has to locate it by
-searching the captured page for its value, and locator matching is
-substring-based -- "1" is contained in the member ID "10001" two rows
-above, so a one-digit number resolves to the wrong cell. Realistic-looking
-numbers are also simply what a real system produces.
-"""
-
-
 def next_sub_account_number(member_id: int) -> int:
-    return SUB_ACCOUNT_BASE + len(MEMBERS[member_id]["sub_accounts"]) + 1
+    return len(MEMBERS[member_id]["sub_accounts"]) + 1

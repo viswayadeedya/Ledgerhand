@@ -234,7 +234,7 @@ def main() -> None:
             secret_values=SECRETS,
             output_values={
                 "member_id": MEMBER_ID,
-                "sub_account_number": "4001",
+                "sub_account_number": "1",
                 "account_type": ACCOUNT_TYPE,
                 "initial_deposit": "$250.00",
             },
