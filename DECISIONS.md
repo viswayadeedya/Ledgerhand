@@ -1784,3 +1784,10 @@ scenario with a real run behind it, and nothing beyond that list.
 - **Confirmed the assignment PDF is absent** from the working tree and from
   every commit reachable in the repo (`git log --diff-filter=A`, plus an
   object-name sweep across all refs).
+- **The three Limits passages cut to one sentence each, linking here.**
+  Every limit is kept -- status codes on a 200-with-error-body app, the
+  load check on a client-rendered page, what page-level recording can't see
+  about the browser, and the redaction/allowlist limits -- but the full
+  reasoning now lives in this file and REPORT.md links to it by anchor.
+  That is the same split the two documents already had; the limits were the
+  one place still carrying their argument in both. REPORT.md: 2,802 -> 2,333.
