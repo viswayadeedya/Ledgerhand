@@ -4,7 +4,7 @@ from urllib.parse import urlsplit, urlunsplit
 import pytest
 import yaml
 
-from cua.artifacts.schema import CapabilityArtifact
+from cua.artifacts.schema import CapabilityArtifact, load_yaml
 from cua.core.models import ActionType
 from cua.handoff import EscalationRequest, HandoffAction, HandoffDecision, MockOperatorHandoff
 from cua.replay.engine import ReplayEngine
@@ -27,7 +27,7 @@ def _retarget(artifact: CapabilityArtifact, domain: str) -> CapabilityArtifact:
 
 @pytest.fixture
 def artifact(fake_app_server) -> CapabilityArtifact:
-    raw = CapabilityArtifact.model_validate(yaml.safe_load(ARTIFACT_PATH.read_text(encoding="utf-8")))
+    raw = load_yaml(ARTIFACT_PATH.read_text(encoding="utf-8"))
     return _retarget(raw, fake_app_server.replace("http://", ""))
 
 

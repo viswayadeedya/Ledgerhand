@@ -4,9 +4,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
-
-from cua.artifacts.schema import CapabilityArtifact
+from cua.artifacts.schema import SchemaVersionError, load_yaml
 from cua.guardrails.redact import mask_sensitive
 from cua.handoff import InteractivePauseHandoff, TerminalOperatorHandoff
 from cua.replay.engine import ReplayEngine
@@ -78,7 +76,14 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    artifact = CapabilityArtifact.model_validate(yaml.safe_load(Path(args.artifact).read_text(encoding="utf-8")))
+    try:
+        artifact = load_yaml(Path(args.artifact).read_text(encoding="utf-8"))
+    except SchemaVersionError as exc:
+        # A refusal at the door, before a browser opens: this artifact can't
+        # be run safely by this build, and saying so plainly beats a
+        # traceback the reader has to decode.
+        print(f"{parser.prog}: {exc}", file=sys.stderr)
+        return USAGE_EXIT_CODE
 
     handoff = None
     if args.handoff == "terminal":
@@ -139,7 +144,9 @@ def main() -> int:
             "recorded_at": datetime.now(timezone.utc).isoformat(),
             "artifact_id": artifact.id,
             "artifact_version": artifact.version,
-            "inputs": _parse_kv(args.input),
+            "inputs": mask_sensitive(
+                _parse_kv(args.input), [i.name for i in artifact.inputs if i.sensitive]
+            ),
             "result": persisted,
         }
         out_path = Path(args.out)

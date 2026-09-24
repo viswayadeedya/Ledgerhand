@@ -46,9 +46,13 @@ what a human taking over the session would do. Replay then resumes,
 re-checks the page, and reads the resulting member's real balance live.
 
 Result: `RECOVERED` (reached the checkpoint, but only after a human stepped
-in), with `outputs.savings_balance == "$2340.18"` -- Maria Garcia's real,
-live-read balance, proving control genuinely returned to automation
-afterward and picked up correctly on the same session, not a fresh one.
+in), with `outputs.savings_balance` reading `***18 [shape: money]` in the
+saved result -- the selected member's real, live-read balance, masked as
+every written-down value is. The script asserts the *unmasked* value
+internally before masking it for the file, so the check is on the real
+figure rather than on its mask. That proves control genuinely returned to
+automation afterward and picked up correctly on the same session, not a
+fresh one.
 
 ## Files
 

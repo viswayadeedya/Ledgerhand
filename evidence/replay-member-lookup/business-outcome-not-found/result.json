@@ -1,17 +1,19 @@
 {
-  "recorded_at": "2026-09-22T21:55:48.865199+00:00",
+  "recorded_at": "2026-09-24T04:32:28.216712+00:00",
   "artifact_id": "member-savings-lookup",
-  "artifact_version": 1,
+  "artifact_version": 2,
   "inputs": {
-    "member_id": "55555"
+    "member_id": "***55 [shape: integer]"
   },
   "result": {
     "outcome": "business_outcome",
     "capability_id": "member-savings-lookup",
     "outputs": {},
+    "sensitive_outputs": [],
     "business_outcome": "member_not_found",
     "business_outcome_description": "No member exists with the given ID.",
     "recovery_events": [],
+    "escalations": [],
     "error": null,
     "steps_executed": 6
   }

@@ -1,6 +1,7 @@
 import pytest
 
 from cua.guardrails import Action, ActionType, PolicyConfig, PolicyEngine, redact_text, redact_value
+from cua.guardrails.redact import mask_partial, mask_sensitive, shape_of
 
 BASE_URL = "http://127.0.0.1:5055"
 
@@ -89,3 +90,54 @@ def test_redact_value_masks_sensitive_keys():
 def test_redact_text_masks_ssn_pattern():
     text = "Member SSN on file: 123-45-6789, please verify."
     assert "123-45-6789" not in redact_text(text)
+
+
+# -- shape hints -----------------------------------------------------------
+
+
+def test_shape_hint_keeps_a_wrong_shaped_value_visible_while_masked():
+    """The reason shape hints exist. "***14" and "***18" are equally
+    unreadable, so a masked record of the extra_row locator bug would hide
+    the very thing it's evidence of. The shapes make it plain without
+    either figure landing on disk.
+    """
+    wrong = mask_partial("2019-03-14", shape_hint=True)
+    right = mask_partial("$2340.18", shape_hint=True)
+
+    assert wrong == "***14 [shape: date]"
+    assert right == "***18 [shape: money]"
+    assert "2019-03" not in wrong  # the shape is published; the value is not
+    assert "2340" not in right
+
+
+def test_shape_hint_is_off_by_default():
+    """Identity errors already say what was expected and what was seen; a
+    shape there is noise. Callers that need it ask for it.
+    """
+    assert mask_partial("10001") == "***01"
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("$2340.18", "money"),
+        ("-$5.00", "money"),
+        ("1,234.56", "money"),
+        ("2019-03-14", "date"),
+        ("3/14/2019", "date"),
+        ("10001", "integer"),
+        ("Maria Garcia", "text"),
+        ("", "empty"),
+        (None, "empty"),
+    ],
+)
+def test_shape_of(value, expected):
+    assert shape_of(value) == expected
+
+
+def test_mask_sensitive_only_touches_the_named_values():
+    masked = mask_sensitive(
+        {"savings_balance": "$2340.18", "member_id": "10001"}, ["savings_balance"]
+    )
+    assert masked["savings_balance"] == "***18 [shape: money]"
+    assert masked["member_id"] == "10001"

@@ -1,20 +1,25 @@
 {
-  "recorded_at": "2026-09-23T15:02:46.811700+00:00",
+  "recorded_at": "2026-09-24T04:24:16.901340+00:00",
   "artifact_id": "member-savings-lookup",
   "artifact_version": 1,
   "inputs": {
-    "member_id": "10001"
+    "member_id": "***01 [shape: integer]"
   },
   "result": {
     "outcome": "success",
     "capability_id": "member-savings-lookup",
     "outputs": {
-      "member_id": "10001",
-      "member_name": "Maria Garcia",
-      "savings_balance": "2019-03-14",
-      "checking_balance": "$2340.18"
+      "member_id": "***01 [shape: integer]",
+      "member_name": "***ia [shape: text]",
+      "savings_balance": "***14 [shape: date]",
+      "checking_balance": "***18 [shape: money]"
     },
-    "sensitive_outputs": [],
+    "sensitive_outputs": [
+      "member_id",
+      "member_name",
+      "savings_balance",
+      "checking_balance"
+    ],
     "business_outcome": null,
     "business_outcome_description": null,
     "recovery_events": [],

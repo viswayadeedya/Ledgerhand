@@ -12,8 +12,8 @@ Outcome: hard_failure
 Steps executed: 7/7
 Failure   : format_invalid (after all steps)
   expected: output 'savings_balance' to look like money
-  observed: '2019-03-14'
-  detail  : Output 'savings_balance' was read as '2019-03-14', which does not look like money. Refusing to return it -- the locator resolved, but to something that isn't the value it claims to be.
+  observed: '***14 [shape: date]'
+  detail  : Output 'savings_balance' was read as '***14 [shape: date]', which does not look like money. Refusing to return it -- the locator resolved, but to something that isn't the value it claims to be.
 Result written to evidence\extra_row\position-only-money-typed.result.json
 
 $ echo $?

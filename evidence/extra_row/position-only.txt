@@ -11,11 +11,12 @@ $ python -m cua.replay --artifact evidence/extra_row/position-only.yaml \
 Outcome: success
 Steps executed: 7/7
 Outputs: {
-  "member_id": "10001",
-  "member_name": "Maria Garcia",
-  "savings_balance": "2019-03-14",
-  "checking_balance": "$2340.18"
+  "member_id": "***01 [shape: integer]",
+  "member_name": "***ia [shape: text]",
+  "savings_balance": "***14 [shape: date]",
+  "checking_balance": "***18 [shape: money]"
 }
+  (checking_balance, member_id, member_name, savings_balance masked -- pass --show-sensitive to print in full)
 Result written to evidence\extra_row\position-only.result.json
 
 $ echo $?

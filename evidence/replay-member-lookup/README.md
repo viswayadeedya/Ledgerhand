@@ -16,10 +16,13 @@ python -m cua.replay --artifact artifacts/member-savings-lookup.yaml \
 ```
 
 Outcome: `success`, 7/7 steps, outputs read live off the page
-(`savings_balance: $2340.18`). Replaying the same artifact with
-`member_id=10002` instead (not saved here, but easy to reproduce) returns
-Carlos Garcia's different, correct balance -- proof this reads the real page
-each time rather than repeating a memorized answer from when it was recorded.
+(`savings_balance: ***18 [shape: money]`). The artifact marks the balances
+and the member's name and ID `sensitive`, so everything written here is
+masked; add `--show-sensitive` to see the figures on your own terminal.
+Replaying the same artifact with `member_id=10002` instead (not saved here,
+but easy to reproduce) returns a different, correct balance -- proof this
+reads the real page each time rather than repeating a memorized answer from
+when it was recorded.
 
 ## business-outcome-not-found/ -- member 55555 (doesn't exist)
 

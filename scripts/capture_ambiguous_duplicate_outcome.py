@@ -18,13 +18,13 @@ import sys
 import urllib.request
 from pathlib import Path
 
-import yaml
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from cua.artifacts.recorder import add_business_outcome  # noqa: E402
-from cua.artifacts.schema import CapabilityArtifact  # noqa: E402
+from cua.artifacts.schema import load_yaml, to_yaml  # noqa: E402
 from cua.guardrails.policy import PolicyConfig, PolicyEngine  # noqa: E402
 from cua.replay.render import render_action  # noqa: E402
 from cua.surface.playwright_surface import PlaywrightSurface  # noqa: E402
@@ -45,7 +45,7 @@ def _arm_duplicate_fault(domain: str) -> None:
 
 
 def main() -> None:
-    artifact = CapabilityArtifact.model_validate(yaml.safe_load(ARTIFACT_PATH.read_text(encoding="utf-8")))
+    artifact = load_yaml(ARTIFACT_PATH.read_text(encoding="utf-8"))
     domain = artifact.target_domain
     _arm_duplicate_fault(domain)
 
@@ -85,10 +85,7 @@ def main() -> None:
     finally:
         surface.close()
 
-    ARTIFACT_PATH.write_text(
-        yaml.safe_dump(updated.model_dump(mode="json"), sort_keys=False, allow_unicode=True),
-        encoding="utf-8",
-    )
+    ARTIFACT_PATH.write_text(to_yaml(updated), encoding="utf-8")
     print(f"\nWrote {ARTIFACT_PATH} with business_outcomes={[o.name for o in updated.business_outcomes]}")
 
 

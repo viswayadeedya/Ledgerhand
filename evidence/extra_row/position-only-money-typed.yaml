@@ -10,7 +10,7 @@ inputs:
 - name: member_id
   type: string
   description: The member ID to look up.
-  example: '10001'
+  sensitive: true
 secrets:
 - name: username
   description: ''
@@ -26,6 +26,7 @@ outputs:
     - strategy: table_position
       value: row=0,col=1
       role: null
+  sensitive: true
 - name: member_name
   type: string
   description: Member's full name.
@@ -35,6 +36,7 @@ outputs:
     - strategy: table_position
       value: row=1,col=1
       role: null
+  sensitive: true
 - name: savings_balance
   type: money
   description: Current savings balance.
@@ -44,6 +46,7 @@ outputs:
     - strategy: table_position
       value: row=3,col=1
       role: null
+  sensitive: true
 - name: checking_balance
   type: money
   description: Current checking balance.
@@ -53,6 +56,7 @@ outputs:
     - strategy: table_position
       value: row=4,col=1
       role: null
+  sensitive: true
 steps:
 - type: navigate
   url: http://127.0.0.1:5055/login

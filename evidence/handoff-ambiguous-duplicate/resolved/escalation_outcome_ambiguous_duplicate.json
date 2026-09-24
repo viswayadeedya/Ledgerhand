@@ -6,7 +6,7 @@
   "business_outcome": "ambiguous_duplicate",
   "current_url": "http://127.0.0.1:5055/app",
   "screenshot_path": "C:\\Users\\viswa\\Documents\\Ledgerhand\\evidence\\handoff-ambiguous-duplicate\\resolved\\step_008.png",
-  "requested_at": "2026-09-22T23:03:33.316835+00:00",
+  "requested_at": "2026-09-24T04:33:03.281172+00:00",
   "decision": {
     "action": "manual_resolved",
     "operator_note": "Demo: operator reviewed both records and selected the first (non-duplicate) one."

@@ -2,6 +2,7 @@
   "outcome": "needs_human",
   "capability_id": "member-savings-lookup",
   "outputs": {},
+  "sensitive_outputs": [],
   "business_outcome": "ambiguous_duplicate",
   "business_outcome_description": "More than one member record matched; automation should not guess which one.",
   "recovery_events": [],
@@ -12,8 +13,8 @@
       "decision": "abandon",
       "operator_note": "Demo: operator unavailable, declining to guess which record is correct.",
       "resumed_via": "MockOperatorHandoff",
-      "requested_at": "2026-09-22T23:03:29.318595+00:00",
-      "resolved_at": "2026-09-22T23:03:29.355522+00:00"
+      "requested_at": "2026-09-24T04:33:00.130636+00:00",
+      "resolved_at": "2026-09-24T04:33:00.169796+00:00"
     }
   ],
   "error": null,

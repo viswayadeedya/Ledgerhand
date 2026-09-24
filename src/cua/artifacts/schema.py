@@ -7,10 +7,11 @@ produces.
 """
 
 import re
+import warnings
 from enum import Enum
 
 import yaml
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ValidationError, field_validator
 
 from cua.core.models import Action, Target
 
@@ -103,6 +104,17 @@ class InputSpec(BaseModel):
     description: str = ""
     example: str | None = None
 
+    sensitive: bool = False
+    """Marks an input that must be masked anywhere it's written down.
+
+    Separate from OutputSpec.sensitive because the same value can be both
+    and the declarations serve different boundaries: a member ID read *off*
+    the page is masked when printed, and the same ID handed *in* by the
+    caller is masked when a result file records what was asked for. Only
+    the second is covered here. Without it, masking an output while filing
+    the identical value under "inputs" two lines up would be theatre.
+    """
+
 
 class SecretSpec(BaseModel):
     """A credential the caller supplies out-of-band, never stored here."""
@@ -167,10 +179,75 @@ class ProvenanceInfo(BaseModel):
     source_run_log: str | None = None
 
 
+CURRENT_SCHEMA_VERSION = "1.1"
+"""The schema this code reads and writes.
+
+Bumped from 1.0 for the Phase 3 additions -- step descriptions, risk
+labels, output types, identity assertions, sensitivity flags. A *minor*
+bump because every one of those is optional and defaults to the old
+behaviour, so a 1.0 artifact still loads and still runs exactly as it did.
+"""
+
+
+class SchemaVersionError(ValueError):
+    """An artifact this code can't safely run. Deliberately not a warning:
+    the difference between "loaded it" and "refused it" has to be visible
+    at the door, not discovered from a wrong answer later.
+    """
+
+
+class OutdatedArtifactWarning(UserWarning):
+    """An artifact older than the current schema. It runs, but it predates
+    checks that exist now -- most importantly the identity assertion, so it
+    may not be proving it landed on the right record.
+    """
+
+
+def check_schema_version(value: str) -> str:
+    current_major, current_minor = (int(p) for p in CURRENT_SCHEMA_VERSION.split("."))
+    try:
+        major, minor = (int(p) for p in str(value).split("."))
+    except ValueError:
+        raise SchemaVersionError(
+            f"artifact schema_version {value!r} is not a MAJOR.MINOR version; "
+            f"this code reads {CURRENT_SCHEMA_VERSION}"
+        ) from None
+
+    if major != current_major:
+        raise SchemaVersionError(
+            f"artifact schema_version {value} has a different major version than "
+            f"{CURRENT_SCHEMA_VERSION}; its structure isn't compatible with this code. "
+            "Rebuild it from its source run log with python -m cua.artifacts."
+        )
+    if minor > current_minor:
+        # Refusing forward-compatibility on purpose. Pydantic would happily
+        # drop fields it doesn't know, and the fields most likely to be new
+        # are *checks* -- silently ignoring a must_equal written by a newer
+        # recorder means running without the safety it was added for, and
+        # reporting success.
+        raise SchemaVersionError(
+            f"artifact schema_version {value} is newer than this code's {CURRENT_SCHEMA_VERSION}. "
+            "It may rely on checks this version doesn't implement, which would be ignored "
+            "rather than applied. Upgrade cua before running it."
+        )
+    if minor < current_minor:
+        warnings.warn(
+            f"artifact schema_version {value} predates this code's {CURRENT_SCHEMA_VERSION}; "
+            "it will run, but without the checks added since -- notably the identity assertion "
+            "(must_equal), so it may not be proving it reached the right record. "
+            "Rebuild it from its source run log to pick those up.",
+            OutdatedArtifactWarning,
+            stacklevel=2,
+        )
+    return str(value)
+
+
 class CapabilityArtifact(BaseModel):
-    schema_version: str = "1.0"
+    schema_version: str = CURRENT_SCHEMA_VERSION
     id: str
     version: int = 1
+
+    _check_schema_version = field_validator("schema_version")(check_schema_version)
     title: str
     description: str
 
@@ -213,6 +290,24 @@ class CapabilityArtifact(BaseModel):
 # contract this file is, and a reader shouldn't have to know the defaults
 # to answer "what version is this?".
 _ALWAYS_WRITTEN = ("schema_version", "version")
+
+
+def load_yaml(text: str) -> CapabilityArtifact:
+    """Parses an artifact, surfacing a version refusal as itself.
+
+    Pydantic wraps a validator's exception in a ValidationError whose
+    printed form buries the reason under field paths and a docs link. A
+    person told "this artifact is newer than your code" can act on it; the
+    same person shown a `value_error` traceback generally can't.
+    """
+    try:
+        return CapabilityArtifact.model_validate(yaml.safe_load(text))
+    except ValidationError as exc:
+        for error in exc.errors():
+            cause = (error.get("ctx") or {}).get("error")
+            if isinstance(cause, SchemaVersionError):
+                raise cause from None
+        raise
 
 
 def to_yaml(artifact: CapabilityArtifact) -> str:

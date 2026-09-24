@@ -30,7 +30,8 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from cua.artifacts.schema import CapabilityArtifact  # noqa: E402
+from cua.artifacts.schema import CapabilityArtifact, load_yaml  # noqa: E402
+from cua.guardrails.redact import mask_sensitive  # noqa: E402
 from cua.guardrails.policy import PolicyConfig, PolicyEngine  # noqa: E402
 from cua.handoff import EscalationRequest, HandoffAction, HandoffDecision, MockOperatorHandoff  # noqa: E402
 from cua.replay.engine import ReplayEngine  # noqa: E402
@@ -54,8 +55,15 @@ def _reset_and_arm(domain: str) -> None:
 
 
 def _write_result(out_dir: Path, result) -> None:
+    """Masked, like every other evidence file. The replay CLI does this at
+    its own --out boundary; this script writes the result itself, so it has
+    to apply the same rule rather than inherit it. `result.outputs` stays
+    intact in memory -- the assertions below still check the real values.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "result.json").write_text(json.dumps(result.model_dump(mode="json"), indent=2), encoding="utf-8")
+    payload = result.model_dump(mode="json")
+    payload["outputs"] = mask_sensitive(result.outputs, result.sensitive_outputs)
+    (out_dir / "result.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def run_abandoned(artifact: CapabilityArtifact, policy: PolicyEngine) -> None:
@@ -93,13 +101,14 @@ def run_resolved(artifact: CapabilityArtifact, policy: PolicyEngine) -> None:
     engine = ReplayEngine(policy=policy, headless=True, evidence_dir=out_dir, handoff=MockOperatorHandoff(operator, out_dir))
     result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
     _write_result(out_dir, result)
-    print(f"[resolved]  outcome={result.outcome.value} outputs={result.outputs}")
+    shown = mask_sensitive(result.outputs, result.sensitive_outputs)
+    print(f"[resolved]  outcome={result.outcome.value} outputs={shown}")
     assert result.outcome == ReplayOutcome.RECOVERED
     assert result.outputs["savings_balance"] == "$2340.18"
 
 
 def main() -> None:
-    artifact = CapabilityArtifact.model_validate(yaml.safe_load(ARTIFACT_PATH.read_text(encoding="utf-8")))
+    artifact = load_yaml(ARTIFACT_PATH.read_text(encoding="utf-8"))
     policy = PolicyEngine(PolicyConfig.load().model_copy(update={"allowed_domains": [artifact.target_domain]}))
 
     run_abandoned(artifact, policy)

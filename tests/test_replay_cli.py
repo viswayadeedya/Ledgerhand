@@ -15,13 +15,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-from cua.artifacts.schema import CapabilityArtifact, to_yaml
+from cua.artifacts.schema import CapabilityArtifact, load_yaml, to_yaml
 from cua.guardrails.policy import PolicyConfig
 from cua.replay.__main__ import EXIT_CODES, USAGE_EXIT_CODE
 from cua.replay.models import ReplayOutcome
 from tests.conftest import arm_fault as _arm_fault
 from tests.conftest import risky_artifact_for as _risky_artifact_for
-from tests.test_replay import ARTIFACT_PATH, _retarget, _with_identity_assertion
+from tests.test_replay import ARTIFACT_PATH, _retarget
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SECRET_ARGS = ["--secret", "username=teller1", "--secret", "password=teller123"]
@@ -71,7 +71,7 @@ def run_cli(fake_app_server, tmp_path):
 
 @pytest.fixture
 def lookup(fake_app_server) -> CapabilityArtifact:
-    raw = CapabilityArtifact.model_validate(yaml.safe_load(ARTIFACT_PATH.read_text(encoding="utf-8")))
+    raw = load_yaml(ARTIFACT_PATH.read_text(encoding="utf-8"))
     return _retarget(raw, fake_app_server.replace("http://", ""))
 
 
@@ -99,7 +99,7 @@ def test_needs_human_exits_three(run_cli, fake_app_server):
 
 def test_hard_failure_exits_one(run_cli, lookup, fake_app_server):
     _arm_fault(fake_app_server, "wrong_member", True)
-    proc = run_cli(_with_identity_assertion(lookup), "--input", "member_id=10001")
+    proc = run_cli(lookup, "--input", "member_id=10001")  # the assertion ships in the artifact
 
     assert proc.returncode == 1
     assert "Outcome: hard_failure" in proc.stdout
@@ -129,16 +129,33 @@ def test_missing_required_input_is_a_usage_error_not_a_traceback(run_cli, lookup
 
 @pytest.fixture
 def sensitive_lookup(lookup) -> CapabilityArtifact:
-    """The committed artifact with the values a real deployment would mark
-    sensitive: the member's name and both balances.
+    """Every output marked sensitive, as the shipped artifact marks them.
+
+    Including `member_id`. It is only the caller's own input echoed back,
+    which is why it was briefly left out -- but the identity-check failure
+    already masks the same ID to `***01`, so printing it in full two lines
+    later made the rule look arbitrary. A value is either sensitive or it
+    isn't; which message it turns up in doesn't change that.
     """
-    outputs = [
-        spec.model_copy(update={"sensitive": True})
-        if spec.name in ("member_name", "savings_balance", "checking_balance")
-        else spec
-        for spec in lookup.outputs
-    ]
-    return lookup.model_copy(update={"outputs": outputs})
+    return _with_sensitivity(lookup, True)
+
+
+def _with_sensitivity(artifact: CapabilityArtifact, sensitive: bool) -> CapabilityArtifact:
+    """Sets sensitivity on inputs *and* outputs.
+
+    Both, because they are separate declarations covering separate
+    boundaries: the output governs what is printed and returned, the input
+    governs what a result file records as having been asked for. A helper
+    that set only one left the other at whatever the shipped artifact
+    happened to say, which is exactly the coupling these tests exist to
+    avoid.
+    """
+    return artifact.model_copy(
+        update={
+            "inputs": [spec.model_copy(update={"sensitive": sensitive}) for spec in artifact.inputs],
+            "outputs": [spec.model_copy(update={"sensitive": sensitive}) for spec in artifact.outputs],
+        }
+    )
 
 
 def test_sensitive_outputs_are_masked_in_the_terminal_by_default(run_cli, sensitive_lookup):
@@ -147,9 +164,12 @@ def test_sensitive_outputs_are_masked_in_the_terminal_by_default(run_cli, sensit
     assert proc.returncode == 0
     assert "$2340.18" not in proc.stdout
     assert "Maria Garcia" not in proc.stdout
-    assert "***18" in proc.stdout  # enough tail to recognise, not enough to leak
+    assert "***18 [shape: money]" in proc.stdout  # tail to recognise it, shape to sanity-check it
     assert "--show-sensitive" in proc.stdout  # and says how to see the full value
-    assert "10001" in proc.stdout  # member_id isn't marked sensitive here, so it isn't touched
+    # The member ID follows the same rule as everything else -- it is masked
+    # in the identity-mismatch error, so it is masked here too.
+    assert "***01 [shape: integer]" in proc.stdout
+    assert '"member_id": "10001"' not in proc.stdout
 
 
 def test_show_sensitive_prints_them_in_full(run_cli, sensitive_lookup):
@@ -173,18 +193,51 @@ def test_result_files_stay_masked_even_with_show_sensitive(run_cli, sensitive_lo
     assert proc.returncode == 0
     assert "$2340.18" in proc.stdout  # the flag worked for the terminal
 
-    written = json.loads(out_path.read_text(encoding="utf-8"))
-    assert "$2340.18" not in out_path.read_text(encoding="utf-8")
-    assert written["result"]["outputs"]["savings_balance"] == "***18"
-    assert written["result"]["outputs"]["member_name"] == "***ia"
-    assert written["result"]["outputs"]["member_id"] == "10001"  # not marked sensitive
+    raw = out_path.read_text(encoding="utf-8")
+    written = json.loads(raw)
+    assert "$2340.18" not in raw
+    assert "Maria Garcia" not in raw
+    assert written["result"]["outputs"]["savings_balance"] == "***18 [shape: money]"
+    assert written["result"]["outputs"]["member_name"] == "***ia [shape: text]"
+    assert written["result"]["outputs"]["member_id"] == "***01 [shape: integer]"
 
 
 def test_masking_does_not_touch_an_artifact_that_marks_nothing_sensitive(run_cli, lookup):
-    """No flags, no sensitive declarations -- nothing changes. The masking
-    has to be opt-in per artifact, not a blanket transform on every value.
+    """Masking is opt-in per artifact, not a blanket transform on every
+    value a capability returns.
+
+    The sensitivity is stripped explicitly rather than relying on the
+    committed artifact happening not to declare any -- that file now does
+    declare them, and a test that silently stopped testing anything would
+    be worse than no test.
     """
-    proc = run_cli(lookup, "--input", "member_id=10001")
+    proc = run_cli(_with_sensitivity(lookup, False), "--input", "member_id=10001")
 
     assert "$2340.18" in proc.stdout
     assert "--show-sensitive" not in proc.stdout  # no note offered when there's nothing to mask
+
+
+def test_a_sensitive_input_is_masked_in_the_result_file(run_cli, sensitive_lookup, tmp_path):
+    """Masking an output while filing the identical value under "inputs"
+    two lines above it would be theatre. The member ID is the same number
+    whichever direction it travelled.
+    """
+    assert all(i.sensitive for i in sensitive_lookup.inputs)  # as shipped
+    out_path = tmp_path / "result.json"
+    proc = run_cli(sensitive_lookup, "--input", "member_id=10001", "--out", str(out_path))
+
+    assert proc.returncode == 0
+    written = json.loads(out_path.read_text(encoding="utf-8"))
+    assert written["inputs"]["member_id"] == "***01 [shape: integer]"
+    assert "10001" not in out_path.read_text(encoding="utf-8")
+
+
+def test_an_input_not_marked_sensitive_is_still_recorded_in_full(run_cli, lookup, tmp_path):
+    """The masking stays opt-in for inputs as it is for outputs -- a result
+    file has to be able to say what was asked for.
+    """
+    out_path = tmp_path / "result.json"
+    run_cli(_with_sensitivity(lookup, False), "--input", "member_id=10001", "--out", str(out_path))
+
+    written = json.loads(out_path.read_text(encoding="utf-8"))
+    assert written["inputs"]["member_id"] == "10001"

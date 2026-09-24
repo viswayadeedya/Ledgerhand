@@ -411,7 +411,12 @@ class ReplayEngine:
         problem = format_error(spec.type, value)
         if problem is None:
             return
-        shown = mask_partial(value) if spec.sensitive else value
+        # Shape hint on, here specifically: this error is *about* the value
+        # being the wrong shape, and "***14" alone would state the problem
+        # while withholding the evidence for it. "***14 [shape: date]"
+        # makes "does not look like money" checkable without printing the
+        # figure.
+        shown = mask_partial(value, shape_hint=True) if spec.sensitive else value
         raise _ReplayEnd(
             ReplayResult(
                 outcome=ReplayOutcome.HARD_FAILURE,

@@ -52,8 +52,8 @@ running locally -- no external network calls, no API key:
 python -m pytest tests/ -v
 ```
 
-69 tests, ~2 minutes (most of that is real Playwright browser launches; the
-fake-app-only tests in `test_fake_app.py` run in well under a second).
+120 tests, ~3 minutes (most of that is real Playwright browser launches;
+the fake-app-only tests in `test_fake_app.py` run in well under a second).
 
 ## Demo path
 
@@ -83,16 +83,28 @@ Prints the outcome and outputs, and writes a full structured step log
 **3. Turn that run into a reusable artifact** (no LLM, no API key):
 ```powershell
 python -m cua.artifacts `
-  --run-log "evidence/runs/discovery-member-lookup/run_log.json" `
+  --run-log "evidence/discovery-member-lookup/run_log.json" `
   --out "artifacts/member-savings-lookup.yaml" `
-  --id "member-savings-lookup" `
+  --id "member-savings-lookup" --version 2 `
   --title "Look up a member's savings balance" `
-  --description "Signs in, searches for a member by ID, and reads their balances." `
-  --input "member_id=10001" `
+  --description "Signs in to the teller system, searches for a member by ID, and reads their name and balances off the member detail page." `
+  --input "member_id=10001" --sensitive-input member_id `
   --secret username --secret password `
   --secret-value "username=teller1" `
+  --assert-equals "member_id={{inputs.member_id}}" `
+  --output-type "savings_balance=money" --output-type "checking_balance=money" `
+  --sensitive-output member_id --sensitive-output member_name `
+  --sensitive-output savings_balance --sensitive-output checking_balance `
   --checkpoint-text "Savings Balance"
 ```
+The `--input` literal is how the recorder *recognizes* a value in order to
+parameterize it away; it is never stored. `--assert-equals` is what makes
+replay prove it reached the right record, and `--sensitive-*` marks what
+gets masked wherever it's written down. Business outcomes are attached
+afterwards by `scripts/capture_business_outcome.py` and
+`scripts/capture_ambiguous_duplicate_outcome.py`, each from a really
+captured page state.
+
 A committed, real example is already at
 [`artifacts/member-savings-lookup.yaml`](artifacts/member-savings-lookup.yaml)
 -- you don't have to run steps 2-3 yourself to try step 4.
@@ -121,7 +133,10 @@ doesn't have to parse stdout to know what happened:
 | `64` | -- | bad command line, or a missing `--input`/`--secret` (kept off `2` so it can't be read as a business outcome) |
 
 Outputs the artifact marks `sensitive` print masked to their last two
-characters (`"savings_balance": "***18"`). The value still reaches the
+characters, with a hint at the value's shape
+(`"savings_balance": "***18 [shape: money]"`). The shape is what keeps a
+masked record useful -- a date sitting in a money field stays visible
+without the figure itself being written down. The value still reaches the
 caller intact -- masking applies where things get *written down*, not to
 what the capability returns. Add `--show-sensitive` to print them in full
 on your own terminal; files written by `--out` and everything under
@@ -137,8 +152,12 @@ python -m cua.replay --artifact "artifacts/member-savings-lookup.yaml" `
 ```
 Outcome: `recovered` -- an unexpected dialog fires, replay dismisses it
 itself, and still returns the correct balance. Other faults:
-`member_not_found`, `session_expired`, `slow_load`, `duplicate_members`
-(see `src/cua/fake_app/faults.py`).
+`member_not_found`, `session_expired`, `slow_load`, `duplicate_members`,
+`wrong_member` (serves a *different* member's page with a 200 and no
+visible error -- caught by the artifact's identity assertion) and
+`extra_row` (inserts a row above the balances -- see
+[`evidence/extra_row/`](evidence/extra_row/)). All fire once and disarm
+themselves; see `src/cua/fake_app/faults.py`.
 
 **6. Try human handoff**, live, at your own terminal:
 ```powershell

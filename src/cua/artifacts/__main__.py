@@ -80,6 +80,16 @@ def main() -> None:
         metavar="name",
         help="Repeatable; marks an output whose value must be masked anywhere it's printed or persisted",
     )
+    parser.add_argument(
+        "--sensitive-input",
+        action="append",
+        metavar="name",
+        help=(
+            "Repeatable; marks an input whose value must be masked when a result file records what "
+            "was asked for. Usually the same names as --sensitive-output: masking a member ID read "
+            "off the page while filing the identical ID under 'inputs' would be theatre."
+        ),
+    )
     parser.add_argument("--checkpoint-text", required=True)
 
     args = parser.parse_args()
@@ -109,6 +119,7 @@ def main() -> None:
         output_assertions=_parse_kv(args.assert_equals),
         output_types=_parse_kv(args.output_type),
         sensitive_outputs=args.sensitive_output or [],
+        sensitive_inputs=args.sensitive_input or [],
         checkpoint_text=args.checkpoint_text,
         source_run_log=args.run_log,
         version=args.version,

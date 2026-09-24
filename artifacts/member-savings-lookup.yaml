@@ -1,140 +1,125 @@
-schema_version: '1.0'
+schema_version: '1.1'
 id: member-savings-lookup
-version: 1
+version: 2
 title: Look up a member's savings balance
 description: Signs in to the teller system, searches for a member by ID, and reads
-  their current savings and checking balance.
+  their name and balances off the member detail page.
 target_domain: 127.0.0.1:5055
 entry_url: http://127.0.0.1:5055/login
 inputs:
 - name: member_id
-  type: string
-  description: The member ID to look up.
-  example: '10001'
+  description: The member ID to look up. Echoed back on the detail page, which is
+    what makes the identity assertion possible.
+  sensitive: true
 secrets:
 - name: username
-  description: ''
 - name: password
-  description: ''
 outputs:
 - name: member_id
-  type: string
-  description: ''
+  description: The member ID shown on the record. Asserted equal to the requested
+    one.
   target:
     frame: main
     candidates:
+    - strategy: table_label
+      value: label=Member ID,col=1
     - strategy: table_position
       value: row=0,col=1
-      role: null
+  must_equal: '{{inputs.member_id}}'
+  sensitive: true
 - name: member_name
-  type: string
-  description: Member's full name.
+  description: The member's full name as shown on the record.
   target:
     frame: main
     candidates:
+    - strategy: table_label
+      value: label=Name,col=1
     - strategy: table_position
       value: row=1,col=1
-      role: null
+  sensitive: true
 - name: savings_balance
-  type: string
+  type: money
   description: Current savings balance.
   target:
     frame: main
     candidates:
+    - strategy: table_label
+      value: label=Savings Balance,col=1
     - strategy: table_position
       value: row=3,col=1
-      role: null
+  sensitive: true
 - name: checking_balance
-  type: string
+  type: money
   description: Current checking balance.
   target:
     frame: main
     candidates:
+    - strategy: table_label
+      value: label=Checking Balance,col=1
     - strategy: table_position
       value: row=4,col=1
-      role: null
+  sensitive: true
 steps:
 - type: navigate
   url: http://127.0.0.1:5055/login
-  method: null
-  description: null
-  target: null
-  point: null
-  value: null
+  description: Go to /login.
+  risk: safe
+  risk_note: declared destination /login; re-checked at replay
 - type: fill
-  url: null
-  method: null
-  description: null
+  description: Enter the username secret into the "User ID" field.
   target:
-    frame: null
     candidates:
     - strategy: table_position
       value: row=1,col=1
-      role: null
     - strategy: css
       value: table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(3) > td:nth-child(2)
         > input:nth-child(1)
-      role: null
-  point: null
   value: '{{secrets.username}}'
+  risk: safe
+  risk_note: no navigation; stayed on /login at discovery; re-checked at replay
 - type: fill
-  url: null
-  method: null
-  description: null
+  description: Enter the password secret into the "Password" field.
   target:
-    frame: null
     candidates:
     - strategy: table_position
       value: row=2,col=1
-      role: null
     - strategy: css
       value: table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(4) > td:nth-child(2)
         > input:nth-child(1)
-      role: null
-  point: null
   value: '{{secrets.password}}'
+  risk: safe
+  risk_note: no navigation; stayed on /login at discovery; re-checked at replay
 - type: click
-  url: null
-  method: null
-  description: null
+  description: Click the "Sign On" button.
   target:
-    frame: null
     candidates:
     - strategy: role
       value: Sign On
       role: button
     - strategy: text
       value: Sign On
-      role: null
     - strategy: table_position
       value: row=3,col=0
-      role: null
     - strategy: css
       value: table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(5) > td:nth-child(1)
         > input:nth-child(1)
-      role: null
-  point: null
-  value: null
+  risk: safe
+  risk_note: destination /app observed at discovery; re-checked at replay
 - type: fill
-  url: null
-  method: null
-  description: null
+  description: Enter the member_id input into the "Member ID or Last Name" field.
   target:
     frame: nav
     candidates:
     - strategy: table_position
       value: row=2,col=0
-      role: null
     - strategy: css
       value: table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(4) > td:nth-child(1)
         > input:nth-child(1)
-      role: null
-  point: null
   value: '{{inputs.member_id}}'
+  risk: safe
+  risk_note: no navigation; stayed on /app at discovery; re-checked at replay
 - type: click
-  url: null
-  method: null
-  description: null
+  description: Click the "Search" button.
   target:
     frame: nav
     candidates:
@@ -143,20 +128,15 @@ steps:
       role: button
     - strategy: text
       value: Search
-      role: null
     - strategy: table_position
       value: row=3,col=0
-      role: null
     - strategy: css
       value: table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(5) > td:nth-child(1)
         > input:nth-child(1)
-      role: null
-  point: null
-  value: null
+  risk: safe
+  risk_note: destination /app/search observed at discovery; re-checked at replay
 - type: click
-  url: null
-  method: null
-  description: null
+  description: Click the "View" link.
   target:
     frame: main
     candidates:
@@ -165,22 +145,19 @@ steps:
       role: link
     - strategy: text
       value: View
-      role: null
     - strategy: table_position
       value: row=1,col=4
-      role: null
     - strategy: css
       value: table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(2) > td:nth-child(5)
         > a:nth-child(1)
-      role: null
-  point: null
-  value: null
+  risk: safe
+  risk_note: destination /app/member/:member_id observed at discovery; re-checked
+    at replay
 checkpoint:
   frame: main
   candidates:
   - strategy: text
     value: Savings Balance
-    role: null
 checkpoint_description: Page shows text matching "Savings Balance".
 business_outcomes:
 - name: member_not_found
@@ -190,8 +167,6 @@ business_outcomes:
     candidates:
     - strategy: text
       value: No member found
-      role: null
-  requires_human: false
 - name: ambiguous_duplicate
   description: More than one member record matched; automation should not guess which
     one.
@@ -200,9 +175,8 @@ business_outcomes:
     candidates:
     - strategy: text
       value: Multiple members matched
-      role: null
   requires_human: true
 provenance:
-  discovered_at: '2026-09-22T21:41:40.365683+00:00'
+  discovered_at: '2026-09-24T04:28:14.696615+00:00'
   discovery_model: claude-sonnet-5
   source_run_log: evidence/discovery-member-lookup/run_log.json

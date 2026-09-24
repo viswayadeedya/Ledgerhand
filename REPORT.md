@@ -1,322 +1,190 @@
 # Design write-up
 
+Distilled; full "chose X over Y because Z" detail in
+[`DECISIONS.md`](DECISIONS.md).
+
 ## 1. Architecture
 
-Single Python process, synchronous, no queues or services -- the brief
-explicitly discourages building scaling infrastructure prematurely, and
-nothing here needs it yet. The system is layered so each part only depends
-on the ones "below" it:
+Single synchronous process, no queues or services — the brief discourages
+premature scaling infrastructure. Layered, each part depending only on
+those below it:
 
 ```
-guardrails  ->  surface  ->  agent (discovery)
-                   |             |
-                   v             v
-              (shared: core.Action/Target/LocatorCandidate)
-                   |             |
-                   v             v
-              replay  <-----  artifacts (recorder)
-                   |
-                   v
-               handoff
+guardrails -> surface -> agent (discovery)
+                 |            |
+                 v            v
+          (shared: core.Action / Target / LocatorCandidate)
+                 |            |
+                 v            v
+            replay  <----  artifacts (recorder)
+                 |
+                 v
+              handoff
 ```
 
-`cua.core.models` holds the one shared vocabulary (`Action`, `Target`,
-`LocatorCandidate`) that guardrails, the surface, the recorder, and replay
-all use directly, rather than each layer inventing its own. An artifact's
-`steps` field is literally `list[Action]` -- the same type the discovery
-loop produces and `PolicyEngine.evaluate()` checks. This is what makes the
-artifact "decoupled from the raw transcript" structural rather than a
-promise: it cannot carry tool names or raw model output, because `Action`
-never had any.
+`cua.core.models` is the one shared vocabulary. An artifact's `steps` are
+`Action`s — what discovery produces and `PolicyEngine` checks — so
+"decoupled from the transcript" is structural: an artifact *cannot* carry
+tool names or model output, because `Action` never had any.
 
-**Discovery uses `browser_toolset_20260801`, not the generic OS-level
-`computer_toolset_20260801`.** The browser toolset gives the model an
-accessibility-tree-style `read_page`/`find` (ref-based element references)
-alongside coordinate fallback, and is documented as designed to wrap an
-existing Playwright-controlled page. That's a much closer match to "bias
-toward an approach that survives no clean DOM" than raw screenshot+
-coordinate clicking, and it let discovery reuse Part 3's locator-ranking
-resolver directly instead of a parallel coordinate-only path. Refs are
-owned by our own `RefRegistry`, mapped to the same ranked `LocatorCandidate`
-lists a coordinate click resolves to via DOM hit-testing -- so whichever way
-the model acts, what gets recorded is always a real, robust locator, never
-a raw coordinate.
-
-**The fake target app** (`src/cua/fake_app/`, FastAPI) intentionally
-reproduces the environment described in the brief: an iframe-based
-frameset (real `<frameset>` support in modern Chromium was judged too
-fragile to depend on; iframes create the identical "must target a named
-frame" problem safely), table-based markup, and a deliberately
-*inconsistent* locator surface -- some controls have proper labels, the
-login/search fields have none at all -- so the locator-ranking strategy has
-real fallback cases to exercise, not a toy.
-
-**Trade-off accepted**: no persistence layer, no multi-process
-orchestration, no message broker. A real deployment would want a
-capability store and a queue for replay requests; this project's scope is
-the abstractions those would sit on top of, not the infrastructure itself
-(Section 3.7 explicitly separates the two).
+| Choice | Reason |
+|---|---|
+| `browser_toolset_20260801` over `computer_toolset_20260801` | Accessibility-tree `read_page`/`find`, built to wrap a Playwright page; nearer "survives no clean DOM" than screenshot-and-click, and reuses replay's own resolver |
+| Refs and coordinate clicks both resolve to ranked `LocatorCandidate`s | What's recorded is always a real locator, never a coordinate |
+| Self-hosted fake app (FastAPI) | The brief's environment: iframes, table markup, *inconsistent* labelling — real fallback cases for ranking |
+| Seven fire-once fault switches | Every failure mode below can be triggered, not just described |
+| No persistence, orchestration or broker | Scope here is the abstractions a capability store and replay queue would sit on |
 
 ## 2. Artifact schema
 
 ```
-CapabilityArtifact
+CapabilityArtifact                schema_version: 1.1
   id, version, title, description
   target_domain, entry_url
-  inputs: [InputSpec]              -- business params (e.g. member_id)
-  secrets: [SecretSpec]            -- declared, never given a value here
-  outputs: [OutputSpec]            -- each has its OWN locator (Target)
-  steps: [Action]                  -- ordered, replayable actions
-  checkpoint: Target               -- asserted success condition
-  business_outcomes: [BusinessOutcomeSpec]  -- named non-success endings
-  provenance                       -- when/which model, source run log
+  inputs:   [InputSpec]           -- business params; `sensitive` marks ones to mask
+  secrets:  [SecretSpec]          -- declared, never given a value here
+  outputs:  [OutputSpec]          -- own locator + `type` + `must_equal` + `sensitive`
+  steps:    [ArtifactStep]        -- an Action plus `description` and `risk`
+  checkpoint: Target              -- asserted success condition
+  business_outcomes: [...]        -- named non-success endings
+  provenance                      -- when/which model, source run log
 ```
 
-Stored as reviewable YAML (matching `guardrails/policy.yaml`'s precedent):
-a human should be able to open the file and understand what the capability
-does, needs, and returns without reading code.
+YAML with defaults omitted: a human approves this before it runs
+unattended, and `role: null` forty times over stops people reading
+carefully. **Locators are ranked candidates**, `role > label > text >
+table_label > table_position > css`, requiring exactly one match —
+ambiguity is a hard failure, never a guess, and the ranking *is* the
+robustness reasoning.
 
-**Steps carry ranked locator candidates**, not single selectors:
-`role > label > text > table_position > css`. Replay tries each in order
-and requires exactly one match -- an ambiguous match is a hard failure to
-surface, never a guess. This is the artifact's answer to "how each target
-element is identified, with reasoning about robustness": the ranking order
-*is* the reasoning.
+Three layers keep an output honest, each catching what the last misses; a
+failure in any returns **no outputs at all**.
+[`evidence/extra_row/`](evidence/extra_row/) shows all three on one page.
 
-**Outputs get a locator, not a memorized value.** The first version of the
-recorder built an output's locator by matching its literal discovery-time
-text ("$2340.18") -- which meant replaying the identical artifact against a
-*different* member failed outright, because that exact string only exists
-for the member it was recorded against. Fixed by preferring a
-`TABLE_POSITION` candidate (row/col, content-independent) for outputs,
-falling back to `TEXT` only when no table position exists. Verified by
-replaying the same artifact against two different members and getting two
-different, correct, live-read balances back.
+| Layer | Catches | Its blind spot |
+|---|---|---|
+| `table_label` — the row whose label reads exactly "Savings Balance" | An inserted row shifting values down | A renamed label; `table_position` stays as fallback, since the two fail oppositely |
+| `must_equal: "{{inputs.member_id}}"` | The *wrong record* — every member's page says "Savings Balance" | Needs the page to echo the input |
+| `type: money` | A resolved value that isn't what it claims — a date where a balance belongs | Shape isn't identity; a wrong member's balance is still money |
 
-**Parameterization is explicit, not inferred.** The recorder doesn't guess
-which literal values are "parameters" -- the caller declares
-`inputs={"member_id": "10001"}` and `secret_values={"username": "teller1"}`
-(known from the same run), and any step value that exactly matches becomes
-`{{inputs.member_id}}` / `{{secrets.username}}`. A verified password value
-is redacted directly to the literal `{{secrets.password}}` placeholder at
-record time (not a generic marker), so the recorder needs no special case
-for it at all.
-
-**Business outcomes** are attached after the fact, from a real captured
-page state (`add_business_outcome`), not guessed from memory of what a
-template says. `member-savings-lookup.yaml` has two: `member_not_found`
-(a plain answer) and `ambiguous_duplicate` (`requires_human: true` -- two
-conflicting records is exactly the kind of thing automation shouldn't
-silently pick between).
+| Also in the schema | Reason |
+|---|---|
+| Values and URLs parameterized, risk labels canonicalized (`/app/member/:member_id`) | `/app/member/10001` is a fact about one run, not the capability. One test asserts no input literal survives anywhere, since the ways one creeps back aren't enumerable — four so far |
+| Per-step `description` from the locator that resolved | Reviewable without decoding selectors |
+| Per-step `risk` from where the step *went* (page diffed before/after) | A selector says nothing about its destination. Never captured = `unverified`, not assumed safe. Review metadata; replay re-evaluates live |
+| `1.0` loads with a warning; a newer minor is refused | The fields likeliest to be new are *checks*; dropping one silently means running without it, then reporting success |
 
 ## 3. Determinism & error handling
 
-Replay never imports the Anthropic SDK at all -- verified by grep, not just
-asserted, and further verified by running replay with a deliberately
-invalid API key. Everything it does comes from `artifact.steps`, already on
+Replay never imports the Anthropic SDK — verified by grep and by running
+with a deliberately invalid key. Everything comes from `artifact.steps`, on
 disk before the run starts.
 
-**Five-way outcome taxonomy**: `SUCCESS`, `RECOVERED` (succeeded, but only
-after handling a hiccup), `BUSINESS_OUTCOME` (a named, legitimate
-non-success answer), `NEEDS_HUMAN` (a policy block or an outcome marked
-`requires_human`), `HARD_FAILURE` (unrecognized state; stop with full
-detail: step index, what was expected, what was observed).
+| Outcome | Meaning | Exit |
+|---|---|---|
+| `SUCCESS` / `RECOVERED` | Reached the checkpoint; `RECOVERED` needed a retry | `0` |
+| `HARD_FAILURE` | Unrecognized state; stop with full detail | `1` |
+| `BUSINESS_OUTCOME` | A named, legitimate non-success answer | `2` |
+| `NEEDS_HUMAN` | Policy block, or outcome marked `requires_human` | `3` |
+| — | Bad invocation, kept off `2` | `64` |
 
-**Recoverable conditions are detected generically**, not per-artifact: a
-dialog appearing (checked both when a step fails *and* as a side effect of
-one succeeding -- a real bug, since a page's `onload` handler can fire a
-popup *after* a click already reported success) and an unexpected redirect
-back to the entry URL (session expiry -- recovered by replaying the exact
-step prefix that already worked once in this run, then retrying, bounded
-to one attempt).
+Exit codes let a caller branch without parsing stdout — retrying on any
+nonzero would retry "no such member" forever. Each `HARD_FAILURE` carries a
+stable `reason_code` (`identity_mismatch`, `format_invalid`,
+`element_not_found`, `timeout`, …), so failures are triaged by kind, not
+grepped for: `element_not_found` is drift, `identity_mismatch` a
+correctness emergency.
 
-**Business outcomes are checked both proactively and reactively.** A step
-can fail to resolve because the flow diverged onto a known outcome (no
-"View" link exists on a not-found page) -- checked reactively, on failure.
-But a *robust* locator's own fallback chain can silently succeed straight
-through an outcome that should have stopped the run: `TABLE_POSITION`
-resolves by position, not content, so "click the first result" worked even
-when the search had legitimately come back ambiguous. Fixed by also
-checking business outcomes before every step (a single, instant, non-
-waiting check, so it costs nothing on the normal path). This was a genuine
-interaction between two features built for different reasons -- locator
-robustness (Part 3) and outcome safety (Part 6) -- that only surfaced once
-both were exercised together against a real ambiguous state.
-
-**Waiting is bounded and purposeful, not blind retries.** Locator
-resolution has two modes: an instant, non-waiting check (`resolve()`,
-"is this here right now") for the strict single-match semantics tests and
-the recorder depend on, and a bounded-poll variant (`resolve_with_wait()`,
-default 3-5s) for checkpoint/output resolution and live step execution,
-where a cross-frame navigation genuinely needs real wall-clock time to
-finish. Using the instant check for the wrong case (right after a
-navigation) produced a real false failure in testing; using the patient
-one for the wrong case (every step, unconditionally) would have made every
-replay run seconds slower for no reason.
-
-**UI drift** (secondary to runtime errors, per the brief): the ranked
-fallback chain is the main defense -- a renamed CSS class or an added
-table column doesn't break a step whose primary candidate is `role`+`name`.
-A genuinely restructured page (a control removed, a frame renamed) is not
-self-healing; it surfaces as a `HARD_FAILURE` with exactly which candidate
-failed and why, which is the signal a human would use to decide whether to
-re-run discovery.
+| Behaviour | Reason |
+|---|---|
+| Resolver separates "matched nothing" from "ambiguous: matched 2" | Identical symptoms, opposite fixes — page changed vs. locator no longer unique |
+| Recovery is generic, not per-artifact: dialogs, session expiry | Dialogs checked when a step fails *and* after one succeeds (a popup can fire post-click); expiry replays the prefix that already worked, bounded to one attempt |
+| Business outcomes checked proactively *and* reactively | A robust locator's fallback chain could otherwise succeed straight *through* an outcome that should have stopped the run |
+| Waiting bounded two ways: instant check, bounded poll | Instant where strict single-match semantics are needed; poll where cross-frame navigation needs wall-clock time. Both were bugs first (DECISIONS.md, Part 6) |
+| UI drift: ranked fallback, then loud failure | Secondary to runtime errors per the brief. A restructured page isn't self-healing; `HARD_FAILURE` names the failing candidate — the signal to re-run discovery |
 
 ## 4. Heterogeneity & multi-tenant
 
-**Surface abstraction**: `Surface` is a two-method interface
-(`observe() -> Observation`, `act(Action) -> ActionResult`); nothing above
-it -- the discovery loop, the recorder, replay -- knows or cares that
-`PlaywrightSurface` is a browser. A legacy web app needs no new
-abstraction at all (it's what this project targets). A desktop app would
-implement the same interface against OS accessibility APIs (Windows UI
-Automation, macOS Accessibility) instead of a DOM: `observe()` would walk
-the accessibility tree instead of scanning HTML, `act()` would dispatch
-native control invocations instead of Playwright clicks. The locator
-vocabulary already anticipates this -- `role`+`name` is literally how a
-screen reader or UI Automation client identifies a control on desktop too;
-only `table_position`/`css` are web-specific and would need a
-desktop-appropriate substitute (e.g., control index within a parent).
+**Surface abstraction**: two methods (`observe()`, `act()`); nothing above
+knows `PlaywrightSurface` is a browser. A desktop app implements the same
+interface against OS accessibility APIs — `observe()` walks the
+accessibility tree, `act()` dispatches native invocations. `role`+`name` is
+how UI Automation names a control too; only `table_*`/`css` are web-specific.
 
-**Multi-tenant reuse**: the artifact schema already separates *what to do*
-(steps' locator candidates) from *where* (`target_domain`, `entry_url`).
-An artifact recorded against one tenant's instance of a shared vendor
-product can be replayed against another tenant's instance by swapping only
-those two fields and any tenant-specific business-outcome text -- proven
-internally by the test suite's retargeting helper, which does exactly this
-to run the same committed artifact against an isolated test instance on a
-different port. For tenants with real customization (extra branding,
-reordered fields), the natural extension is a small per-tenant *override*
-layer on top of a base artifact -- additional or substituted locator
-candidates, an alternate checkpoint phrase -- rather than re-recording from
-scratch, since the ranked-candidate structure already supports "try this
-first, fall back to the base artifact's candidates."
+**Multi-tenant reuse**: the schema separates *what to do* (candidates) from
+*where* (`target_domain`, `entry_url`), so swapping those two replays the
+artifact elsewhere — proven by the suite's retargeting helper. Label
+anchoring makes it likelier to hold: tenant variation is usually extra rows
+and reordered fields, not renamed labels. Real customization wants a
+per-tenant *override* layer, which the ranked structure already supports.
 
-**Drift detection**: replay's own `HARD_FAILURE` (which candidate failed,
-what was expected vs. observed) is already the raw signal. At scale, the
-natural next step (not built here, per the brief's own "don't build scaling
-infrastructure" guidance) is tracking failure rate per `(artifact_id,
-tenant)` over time -- a spike specific to one tenant flags a
-tenant-specific UI change worth reviewing before other tenants replay the
-same now-broken artifact.
+**Drift detection**: `HARD_FAILURE` + `reason_code` is the raw signal. At
+scale — not built, per the brief's scope note — track failure rate per
+`(artifact_id, tenant, reason_code)`: an `element_not_found` spike for one
+tenant flags a UI change before others hit it; any `identity_mismatch` is a
+correctness alarm.
 
 ## 5. Escalation & handoff
 
-**Detecting "stuck"**: `PolicyEngine` blocking a risky/irreversible action,
-or a business outcome explicitly marked `requires_human=True` (e.g.
-`ambiguous_duplicate` -- picking the wrong bank record is exactly the kind
-of guess automation shouldn't make).
+**Detecting "stuck"**: a policy block, or an outcome marked
+`requires_human` (`ambiguous_duplicate` — picking the wrong bank record is
+the guess automation shouldn't make).
 
-**Taking control of the live session**: `HandoffHandler.escalate(request,
-surface)` receives the *exact* `PlaywrightSurface` object the run was
-already using -- not a fresh one. Automation makes no further calls to it
-until `escalate()` returns; control is concretely wherever that call is
-executing. Three implementations, matched to the brief's own scope note
-(a full co-browsing console is out of scope; mock the UI, keep the
-mechanism real):
-- `InteractivePauseHandoff` -- the real, hands-on mechanism. Uses
-  Playwright's own `page.pause()`, which opens the Playwright Inspector
-  against the live browser for a person to click/type/navigate in
-  directly, resuming the instant they click Resume. Needs a headed session
-  and a person present, so it can't be driven by an automated test.
-- `MockOperatorHandoff` -- a programmable callback, still handed the real
-  surface, so it can act on it exactly as a human would (a real click, not
-  a stub). This is what proves the control-transfer model in tests and in
-  committed evidence without requiring a person physically present.
-- `TerminalOperatorHandoff` -- a real person, a real decision, at a
-  terminal instead of a browser console. Only the "look at the live page"
-  part is mocked (a screenshot path is printed rather than embedded);
-  decision-making and control transfer are not.
+**Taking control**: `escalate(request, surface)` receives the *exact*
+`PlaywrightSurface` the run was using, and automation makes no further
+calls until it returns — control is concretely wherever that call is
+executing. Three implementations, per the brief's "mock the UI, keep the
+mechanism real":
 
-**Handing control back**: three decisions an operator can make.
-`APPROVE_AND_RETRY` (automation retries the exact blocked step, now
-approved). `MANUAL_RESOLVED` (the human already acted live; skip the rest
-of the scripted steps -- the old recipe's assumptions about page structure
-may no longer hold -- and go straight to checking whether the checkpoint or
-a business outcome now matches). `ABANDON`. Escalation is bounded to one
-attempt per named outcome per run, so a declined or unfixed state can't
-loop.
+| Implementation | What's real |
+|---|---|
+| `InteractivePauseHandoff` | Everything — Playwright's Inspector on the live browser. Needs a person, so no test drives it |
+| `MockOperatorHandoff` | A callback handed the same live surface; clicks real elements. Proves the model unattended, in tests and evidence |
+| `TerminalOperatorHandoff` | A real person, a real decision; only "look at the page" is mocked |
 
-Verified end to end, not just designed: a test (and matching committed
-evidence) has the mock operator click a real "View" link on the actual live
-session, then confirms replay resumes and reads the *correct* member's real
-balance afterward -- proof it's the same session, not a fresh one.
+**Handing back**: `APPROVE_AND_RETRY`; `MANUAL_RESOLVED` (the human acted,
+so skip the remaining scripted steps — the old recipe's assumptions may no
+longer hold — and go straight to the checkpoint); `ABANDON`. One escalation
+per named outcome per run, so an unfixed state can't loop. Verified end to
+end: a test and matching evidence have the operator click a real "View"
+link on the live session, then replay resumes and reads the *correct*
+member's balance.
 
 ## 6. Safety
 
-**Allowlist, enforced outside the model.** `guardrails/policy.yaml`
-declares permitted domains, route globs, and action types; `PolicyEngine.
-evaluate()` checks every action -- discovery's and replay's alike -- against
-it. Neither the LLM's reasoning nor a step's own success is ever
-consulted; the check only ever sees a typed `Action`.
+| Control | Reason |
+|---|---|
+| Allowlist (domains, routes, action types) enforced outside the model | `PolicyEngine` sees only a typed `Action` — never the LLM's reasoning, never whether a step succeeded. Discovery and replay alike |
+| Resolve, predict, check, then act — never the reverse | A click's destination (`href`, form `action`) is checked *before* clicking, so a blocked action never reaches the browser |
+| `risky_routes` blocked by default, not flagged | Needs explicit `human_approved` — the conservative end of the brief, since it stands in for a money-moving action |
+| Redaction fixed at each layer it leaked from | A password leaked three times, at three layers (DECISIONS.md, Part 4); each fix has a regression test reproducing the leak |
+| Sensitive values masked with a shape hint: `***18 [shape: money]` | The shape keeps the record useful — a date in a money field stays visible without the figure. The caller gets the value intact; masking applies where things are *written down* |
+| `--show-sensitive` affects the terminal only | Result files and evidence are masked with no flag: they outlive the run and are read by people who weren't part of it |
 
-**Resolve, predict, check, then act -- never the reverse.** For a click,
-the surface resolves the target element and reads its destination (an
-`<a>`'s `href`, or the enclosing `<form>`'s `action`/`method`) *before*
-clicking, builds the real destination URL, and only then checks policy. A
-blocked action never reaches the browser at all.
+**Limits, stated plainly:**
 
-**Risky/irreversible actions are blocked by default**, not merely flagged.
-Routes matching `risky_routes` (currently the sub-account commit endpoint)
-require an explicit `human_approved=True` -- the conservative end of what
-the brief allows, chosen because this stands in for a money-moving action
-in a banking context.
-
-**Redaction, and the real story behind it.** A verified password value
-leaked into logs/artifacts three separate times during development, at
-three separate layers, each requiring its own fix: the recorded tool
-input, a *separate* DOM re-scan (`Observation.elements`) that reads a
-password input's live `.value` regardless of visual masking, and the
-internal `Action` object that needs the real value to actually perform the
-fill. Each is now fixed at its own layer (the DOM scan masks at the
-source; the recorded copies are built *after* execution from a redacted
-copy, never the object used to act) and covered by a regression test that
-reproduces the original leak.
-
-**Limits, stated plainly.** Redaction is key-name and pattern based, not
-exhaustive -- a secret-shaped field that isn't specifically
-`type="password"` gets a generic marker, not a guaranteed-correct one, and
-would need a human's attention when turning that run into an artifact.
-The allowlist is domain/route-based, not content-based -- a route rename on
-the target app requires a policy update, not something the system detects
-on its own. There is no secrets-vault integration; credentials are passed
-in at call time and held only in memory for the duration of a run. No
-rate-limiting or anomaly detection beyond the allowlist itself.
+| Limit | Consequence |
+|---|---|
+| Redaction is key-name and pattern based | Not exhaustive; an unanticipated secret-shaped field isn't caught |
+| Sensitivity is declared per artifact | An output nobody marked stays unmasked — a human judgement the system doesn't second-guess |
+| Screenshots under `--evidence-dir` are not masked | They're pixels; pretending otherwise would be worse than saying so |
+| Allowlist is route-based, not content-based | A route rename needs a policy update |
+| No secrets vault | Credentials passed at call time, held in memory for the run only |
+| No rate-limiting or anomaly detection | Beyond the allowlist, nothing |
 
 ## 7. Cuts
 
-- **Desktop/multi-tenant implementation** -- designed for (Section 4
-  above), not built, per the brief's own explicit scope note.
-- **Richer output/checkpoint locators.** Outputs and checkpoints get one
-  candidate (position or text) built from the lightweight observation
-  scan, not the full ranked role/label/table-position/CSS chain
-  interacted-with elements get from the richer descriptor scan. A more
-  complete version would re-run that fuller scan at recording time.
-- **Business outcomes are attached via deterministic exploration
-  (a small script driving the artifact's own recorded prefix against a
-  known-bad input), not re-discovered by the LLM each time.** The one
-  *required* genuine LLM run is discovery of the happy path; enriching an
-  artifact with already-known failure modes afterward mirrors how an
-  engineer would actually build out a runbook's edge cases, and was a
-  deliberate choice to spend the LLM-run requirement where it matters most.
-- **Static type-checking (mypy) as a CI gate.** The codebase uses type
-  hints and Pydantic models consistently by convention; a formal
-  strict-mode pass this late would have been schedule risk for a
-  lower-weighted criterion.
-- **No confidence/approval workflow** (draft -> approved gating unattended
-  replay) or **multi-run stability scoring** -- both named as stretch goals
-  in the brief; natural next steps once more than one or two artifacts
-  exist to compare.
-- **No code-generation from an artifact** (e.g. emitting a Playwright test
-  file) -- also a stretch goal, not attempted.
-- **A full co-browsing operator console** -- explicitly out of scope per
-  the brief; used Playwright's own built-in Inspector for the real
-  hands-on case instead of building one.
+| Cut | Reason |
+|---|---|
+| Desktop / multi-tenant implementation | Designed for (Section 4), not built, per the brief's scope note |
+| Richer *checkpoint* locators | Outputs now get a ranked chain; that gap is closed. Checkpoints still get one `text` candidate, and want the fuller descriptor scan at record time |
+| Business outcomes by deterministic exploration, not LLM re-discovery | The required LLM run is the happy path; adding known failure modes after is how an engineer builds a runbook's edge cases |
+| mypy as a CI gate | Types and Pydantic models are used by convention; a strict pass this late was schedule risk for a lower-weighted criterion |
+| Confidence/approval workflow, stability scoring, code-gen from artifacts | Named stretch goals; natural once more than one or two artifacts exist to compare |
+| Full co-browsing console | Out of scope per the brief; used Playwright's Inspector instead |
 
-**What's next, in priority order**: (1) the richer per-candidate output
-locators, since that's the most direct correctness improvement for a
-wider range of real pages; (2) per-tenant artifact overrides plus basic
-failure-rate drift tracking, since that's the most direct path toward the
-multi-tenant story actually paying off at scale; (3) a confidence/approval
-gate, once there's a real population of artifacts and replay history to
-score.
+**What's next**: (1) per-tenant overrides plus drift tracking keyed on
+`(artifact_id, tenant, reason_code)` — the reason codes are what make that
+tracking meaningful; (2) the ranked-candidate treatment for checkpoints
+that outputs now get; (3) a confidence/approval gate, once there's a real
+population of artifacts to score.

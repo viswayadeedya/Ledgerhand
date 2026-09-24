@@ -8,19 +8,39 @@ LLM in the loop.
 
 ## Reading one
 
+- `schema_version` -- which version of this contract the file speaks
+  (`1.1`). An older artifact still loads, with a warning naming what it
+  predates; a newer one is refused rather than partly applied, since the
+  fields most likely to be new are *checks*, and silently dropping one
+  means running without the safety it was written with.
+- `version` -- the capability's own revision, independent of the schema's.
 - `inputs` / `secrets` -- what the caller must supply per invocation.
   `inputs` are business parameters (e.g. a member ID); `secrets` are
-  credentials, never given a literal value here.
+  credentials, never given a literal value here. `sensitive: true` on an
+  input means a result file records it masked.
 - `outputs` -- what the caller gets back. Each has its own `target` (a
   locator), because replay always re-reads the live page at the checkpoint;
-  it never just repeats whatever value discovery happened to see.
+  it never just repeats whatever value discovery happened to see. Each may
+  also carry:
+  - `type` (`money` / `integer` / `string`) -- doubles as validation. A
+    value that doesn't match is a hard failure and is never returned.
+  - `must_equal` -- an assertion that this output matches something the
+    caller supplied, e.g. `"{{inputs.member_id}}"`. This is what proves the
+    run landed on the *right record*: every member's page says "Savings
+    Balance", so the checkpoint alone can't tell them apart.
+  - `sensitive` -- masked anywhere it's printed or persisted, with a shape
+    hint (`***18 [shape: money]`). The caller still receives it intact.
 - `steps` -- the ordered, replayable actions. Each `target.candidates` list
   is ranked most-to-least robust (`role` > `label` > `text` >
-  `table_position` > `css`); replay tries them in order and requires exactly
-  one match, never a guess among several. Any literal value that matched a
-  declared input or secret during recording has been replaced with a
-  `{{inputs.x}}` / `{{secrets.x}}` placeholder -- the real values never made
-  it in.
+  `table_label` > `table_position` > `css`); replay tries them in order and
+  requires exactly one match, never a guess among several. Each step also
+  has a plain-English `description` and a `risk` label (`safe` / `risky` /
+  `unverified`) with a `risk_note` saying where that judgement came from --
+  review metadata, since replay re-checks every action live regardless.
+  Any literal that matched a declared input or secret during recording has
+  been replaced with a `{{inputs.x}}` / `{{secrets.x}}` placeholder, and
+  URLs are canonicalized (`/app/member/:member_id`) -- no value from the
+  discovery run survives anywhere in the file.
 - `checkpoint` -- the condition that proves the flow actually reached the
   expected state, asserted by a human when the artifact was built (not
   inferred). Same `Target` shape as everything else.

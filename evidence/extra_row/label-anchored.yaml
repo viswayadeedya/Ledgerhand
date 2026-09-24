@@ -9,7 +9,7 @@ inputs:
 - name: member_id
   type: string
   description: ''
-  example: '10001'
+  sensitive: true
 secrets:
 - name: username
   description: ''
@@ -29,6 +29,7 @@ outputs:
       value: row=0,col=1
       role: null
   must_equal: '{{inputs.member_id}}'
+  sensitive: true
 - name: member_name
   type: string
   description: ''
@@ -42,6 +43,7 @@ outputs:
       value: row=1,col=1
       role: null
   must_equal: null
+  sensitive: true
 - name: savings_balance
   type: money
   description: ''
@@ -55,6 +57,7 @@ outputs:
       value: row=3,col=1
       role: null
   must_equal: null
+  sensitive: true
 - name: checking_balance
   type: money
   description: ''
@@ -68,6 +71,7 @@ outputs:
       value: row=4,col=1
       role: null
   must_equal: null
+  sensitive: true
 steps:
 - type: navigate
   url: http://127.0.0.1:5055/login

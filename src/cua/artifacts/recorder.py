@@ -10,7 +10,7 @@ parameters, and build the artifact without re-running anything.
 
 import re
 from datetime import datetime, timezone
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from cua.core.models import (
     Action,
@@ -74,6 +74,7 @@ def build_artifact(
     output_assertions: dict[str, str] | None = None,
     output_types: dict[str, str] | None = None,
     sensitive_outputs: list[str] | None = None,
+    sensitive_inputs: list[str] | None = None,
     checkpoint_text: str = "",
     source_run_log: str | None = None,
     version: int = 1,
@@ -88,6 +89,7 @@ def build_artifact(
     output_assertions = output_assertions or {}
     output_types = output_types or {}
     sensitive_outputs = sensitive_outputs or []
+    sensitive_inputs = sensitive_inputs or []
 
     replayable = [s for s in steps if s.action is not None and s.action.type in _REPLAYABLE_TYPES]
     if not replayable:
@@ -132,8 +134,18 @@ def build_artifact(
         target_domain=target_domain,
         entry_url=entry_url,
         inputs=[
-            InputSpec(name=name, description=input_descriptions.get(name, ""), example=value)
-            for name, value in inputs.items()
+            # Deliberately no `example`. The literal is passed in so the
+            # recorder can *recognize* it and parameterize it away; storing
+            # it back as an example would undo exactly that work and leave
+            # a real record identifier in a committed file. The field stays
+            # in the schema for an artifact whose example is genuinely safe
+            # to publish.
+            InputSpec(
+                name=name,
+                description=input_descriptions.get(name, ""),
+                sensitive=name in sensitive_inputs,
+            )
+            for name in inputs
         ],
         secrets=[SecretSpec(name=name) for name in secret_names],
         outputs=outputs,
@@ -177,7 +189,7 @@ def _to_artifact_step(
     policy: PolicyEngine,
 ) -> ArtifactStep:
     action = _parameterize(recorded.action, inputs, secret_values)
-    risk, note = _classify(recorded, before, policy)
+    risk, note = _classify(recorded, before, policy, inputs)
     fields = action.model_dump()
     # Keep whatever discovery recorded if it said anything; only fill the
     # blank. The model's own account of why it did something is better
@@ -187,12 +199,32 @@ def _to_artifact_step(
 
 
 def _parameterize(action: Action, inputs: dict[str, str], secret_values: dict[str, str]) -> Action:
-    if action.value is None:
-        return action
-    new_value = _parameterize_value(action.value, inputs, secret_values)
-    if new_value == action.value:
-        return action
-    return action.model_copy(update={"value": new_value})
+    update = {}
+    if action.value is not None:
+        new_value = _parameterize_value(action.value, inputs, secret_values)
+        if new_value != action.value:
+            update["value"] = new_value
+    if action.url is not None:
+        new_url = _parameterize_url(action.url, inputs)
+        if new_url != action.url:
+            update["url"] = new_url
+    return action.model_copy(update=update) if update else action
+
+
+def _parameterize_url(url: str, inputs: dict[str, str]) -> str:
+    """Turns /app/member/10001 into /app/member/{{inputs.member_id}}.
+
+    A recorded navigate step keeps whatever URL discovery used, which for a
+    record-specific page contains that run's identifier -- so replaying it
+    for a different member would silently fetch the *original* member's
+    page. render_value substitutes placeholders anywhere in a string, so a
+    segment-level template renders correctly at replay time.
+    """
+    parts = urlsplit(url)
+    canonical = _canonicalize(parts.path, inputs, lambda name: f"{{{{inputs.{name}}}}}")
+    if canonical == parts.path:
+        return url
+    return urlunsplit(parts._replace(path=canonical))
 
 
 # -- plain-English descriptions -------------------------------------------
@@ -315,17 +347,42 @@ def _label_for_position(recorded: RecordedStep, position: str) -> str | None:
     return ""
 
 
-def _path_of(url: str | None) -> str:
+def _path_of(url: str | None, inputs: dict[str, str] | None = None) -> str:
+    """The path of a URL, with any segment that *is* an input value replaced
+    by the parameter's name: /app/member/10001 -> /app/member/:member_id.
+
+    Without this, the risk note quietly reintroduces the one thing the rest
+    of the recorder works to keep out -- a real record identifier from the
+    discovery run, baked into a file that gets committed and reused for
+    every other member. This is the canonicalization the brief asks for,
+    applied to the place it was still leaking.
+
+    Matching whole segments only, never substrings: an input of "1" must
+    not turn /app/member/10001 into /app/member/:member_id0001.
+    """
     if not url:
         return "the recorded URL"
-    return urlsplit(url).path or url
+    path = urlsplit(url).path or url
+    return _canonicalize(path, inputs, lambda name: f":{name}")
+
+
+def _canonicalize(path: str, inputs: dict[str, str] | None, placeholder) -> str:
+    by_value = {literal: name for name, literal in (inputs or {}).items() if literal}
+    if not by_value:
+        return path
+    return "/".join(
+        placeholder(by_value[segment]) if segment in by_value else segment for segment in path.split("/")
+    )
 
 
 # -- risk labels -----------------------------------------------------------
 
 
 def _classify(
-    recorded: RecordedStep, before: Observation | None, policy: PolicyEngine
+    recorded: RecordedStep,
+    before: Observation | None,
+    policy: PolicyEngine,
+    inputs: dict[str, str],
 ) -> tuple[StepRisk, str]:
     """Labels a step using the destination discovery actually reached.
 
@@ -343,7 +400,7 @@ def _classify(
     """
     action = recorded.action
     if action.type == ActionType.NAVIGATE and action.url:
-        return _risk_of([action.url], policy, f"declared destination {_path_of(action.url)}")
+        return _risk_of([action.url], policy, f"declared destination {_path_of(action.url, inputs)}")
 
     after = recorded.result.observation if recorded.result is not None else None
     if after is None:
@@ -351,13 +408,15 @@ def _classify(
 
     moved = _destinations_reached(before, after)
     if moved:
-        where = ", ".join(_path_of(url) for url in moved)
+        where = ", ".join(_path_of(url, inputs) for url in moved)
         return _risk_of(moved, policy, f"destination {where} observed at discovery")
 
     # The step changed nothing about where we are (typing into a field, for
     # instance). Say so rather than reporting the current URL as a
     # "destination" it never travelled to.
-    return _risk_of([after.url], policy, f"no navigation; stayed on {_path_of(after.url)} at discovery")
+    return _risk_of(
+        [after.url], policy, f"no navigation; stayed on {_path_of(after.url, inputs)} at discovery"
+    )
 
 
 def _risk_of(urls: list[str], policy: PolicyEngine, note: str) -> tuple[StepRisk, str]:

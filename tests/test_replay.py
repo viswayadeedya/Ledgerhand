@@ -4,7 +4,7 @@ from urllib.parse import urlsplit, urlunsplit
 import pytest
 import yaml
 
-from cua.artifacts.schema import CapabilityArtifact, OutputType
+from cua.artifacts.schema import CapabilityArtifact, OutputType, load_yaml
 from cua.core.models import Action, ActionType, LocatorCandidate, LocatorStrategy, Target
 from cua.replay.engine import ReplayEngine
 from cua.replay.models import FailureReason, ReplayOutcome
@@ -34,7 +34,7 @@ def _retarget(artifact: CapabilityArtifact, domain: str) -> CapabilityArtifact:
 
 @pytest.fixture
 def artifact(fake_app_server) -> CapabilityArtifact:
-    raw = CapabilityArtifact.model_validate(yaml.safe_load(ARTIFACT_PATH.read_text(encoding="utf-8")))
+    raw = load_yaml(ARTIFACT_PATH.read_text(encoding="utf-8"))
     return _retarget(raw, fake_app_server.replace("http://", ""))
 
 
@@ -46,9 +46,12 @@ def engine(test_policy, tmp_path) -> ReplayEngine:
 def _with_identity_assertion(
     artifact: CapabilityArtifact, *, sensitive: bool = False, template: str = "{{inputs.member_id}}"
 ) -> CapabilityArtifact:
-    """Adds the member_id identity assertion the committed artifact will
-    carry once it's regenerated -- kept here so these tests don't depend on
-    that having happened yet.
+    """Rewrites the member_id assertion.
+
+    The shipped artifact now carries the real one, so tests of the normal
+    path use it directly rather than patching a copy. This remains for the
+    cases that need a *different* assertion than the one that ships --
+    chiefly the deliberately unresolvable template.
     """
     outputs = [
         o.model_copy(update={"must_equal": template, "sensitive": sensitive}) if o.name == "member_id" else o
@@ -145,40 +148,27 @@ def test_replay_hard_failure_has_debuggable_detail(engine, artifact):
     assert "This Button Does Not Exist" in result.error.expected
 
 
-# What the fake app's member-detail table labels each value with. Used to
-# build the label-anchored artifact these tests exercise, before Phase 4
-# bakes the same anchors into the committed one.
-_OUTPUT_LABELS = {
-    "member_id": "Member ID",
-    "member_name": "Name",
-    "savings_balance": "Savings Balance",
-    "checking_balance": "Checking Balance",
-}
+def _without_label_anchors(artifact: CapabilityArtifact) -> CapabilityArtifact:
+    """Strips the label anchors back off, leaving the positional fallback.
 
-
-def _with_label_anchors(artifact: CapabilityArtifact, *, money_typed: bool = False) -> CapabilityArtifact:
+    Written as a *removal* from the shipped artifact rather than as an
+    addition to an older one. Before Phase 4 these tests built the anchored
+    version by hand and used the committed file as the position-only
+    control -- which worked only because that file happened not to have
+    anchors yet. The moment it gained them, the control would have quietly
+    become a second copy of the fix, and the test would have gone on
+    passing while testing nothing.
+    """
     outputs = []
     for spec in artifact.outputs:
-        label = _OUTPUT_LABELS.get(spec.name)
-        candidates = list(spec.target.candidates)
-        if label:
-            col = candidates[0].value.split("col=")[-1]
-            candidates = [
-                LocatorCandidate(strategy=LocatorStrategy.TABLE_LABEL, value=f"label={label},col={col}"),
-                *candidates,
-            ]
-        update = {"target": spec.target.model_copy(update={"candidates": candidates})}
-        if money_typed and spec.name.endswith("_balance"):
-            update["type"] = OutputType.MONEY
-        outputs.append(spec.model_copy(update=update))
+        kept = [c for c in spec.target.candidates if c.strategy != LocatorStrategy.TABLE_LABEL]
+        assert kept, f"output {spec.name} has no fallback behind its label anchor"
+        outputs.append(spec.model_copy(update={"target": spec.target.model_copy(update={"candidates": kept})}))
     return artifact.model_copy(update={"outputs": outputs})
 
 
-def _with_money_types(artifact: CapabilityArtifact) -> CapabilityArtifact:
-    outputs = [
-        spec.model_copy(update={"type": OutputType.MONEY}) if spec.name.endswith("_balance") else spec
-        for spec in artifact.outputs
-    ]
+def _without_output_types(artifact: CapabilityArtifact) -> CapabilityArtifact:
+    outputs = [spec.model_copy(update={"type": OutputType.STRING}) for spec in artifact.outputs]
     return artifact.model_copy(update={"outputs": outputs})
 
 
@@ -188,15 +178,16 @@ def test_extra_row_label_anchored_vs_position_only(engine, artifact, fake_app_se
     This is deliberately one test rather than three, because the contrast
     IS the claim. Read as a table:
 
-        artifact                outcome        savings_balance   reason
-        ----------------------  -------------  ----------------  --------------
-        label-anchored          SUCCESS        $2340.18          -
-        position-only           SUCCESS        2019-03-14 (!)    -
-        position-only + money   HARD_FAILURE   (none)            format_invalid
+        artifact                        outcome        savings_balance   reason
+        ------------------------------  -------------  ----------------  --------------
+        as shipped (label + money)      SUCCESS        $2340.18          -
+        anchors removed, types removed  SUCCESS        2019-03-14 (!)    -
+        anchors removed, types kept     HARD_FAILURE   (none)            format_invalid
 
     Row 2 is the bug: no error, a plausible-looking string, and the wrong
     answer -- savings' money has slid down into checking_balance. Row 1 is
-    the fix, row 3 the net under it.
+    the fix as it ships, row 3 the net under it for when a label is renamed
+    and only the positional fallback is left.
     """
 
     def run(variant):
@@ -211,9 +202,9 @@ def test_extra_row_label_anchored_vs_position_only(engine, artifact, fake_app_se
             result.error.reason_code if result.error else None,
         )
 
-    anchored = run(_with_label_anchors(artifact))
-    position_only = run(artifact)
-    position_only_typed = run(_with_money_types(artifact))
+    anchored = run(artifact)  # exactly what ships, no test-only edits
+    position_only = run(_without_output_types(_without_label_anchors(artifact)))
+    position_only_typed = run(_without_label_anchors(artifact))
 
     assert summarize(anchored) == (ReplayOutcome.SUCCESS, "$2340.18", "$512.44", None)
     assert summarize(position_only) == (ReplayOutcome.SUCCESS, "2019-03-14", "$2340.18", None)
@@ -264,14 +255,17 @@ def test_unresolvable_output_label_is_named_in_the_failure(engine, artifact):
 
 def test_money_type_accepts_a_real_balance(engine, artifact):
     """The type check must not cry wolf on the normal path."""
-    result = engine.run(_with_money_types(artifact), inputs={"member_id": "10001"}, secrets=SECRETS)
+    assert artifact.outputs[2].type == OutputType.MONEY  # the shipped artifact really declares it
+    result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
     assert result.outcome == ReplayOutcome.SUCCESS
     assert result.outputs["savings_balance"] == "$2340.18"
 
 
 def test_identity_assertion_passes_on_the_right_record(engine, artifact):
     """The assertion must not cry wolf: a correct run still succeeds."""
-    result = engine.run(_with_identity_assertion(artifact), inputs={"member_id": "10001"}, secrets=SECRETS)
+    member_id = next(o for o in artifact.outputs if o.name == "member_id")
+    assert member_id.must_equal == "{{inputs.member_id}}"  # as shipped, not patched in here
+    result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
     assert result.outcome == ReplayOutcome.SUCCESS
     assert result.outputs["member_id"] == "10001"
 
@@ -284,7 +278,7 @@ def test_wrong_record_is_hard_failure_not_success(engine, artifact, fake_app_ser
     confidently wrong answer is worse than a crash.
     """
     _arm_fault(fake_app_server, "wrong_member", True)
-    result = engine.run(_with_identity_assertion(artifact), inputs={"member_id": "10001"}, secrets=SECRETS)
+    result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
 
     assert result.outcome == ReplayOutcome.HARD_FAILURE
     assert result.error is not None
@@ -295,9 +289,7 @@ def test_wrong_record_is_hard_failure_not_success(engine, artifact, fake_app_ser
 
 def test_identity_mismatch_masks_sensitive_values_in_the_error(engine, artifact, fake_app_server):
     _arm_fault(fake_app_server, "wrong_member", True)
-    result = engine.run(
-        _with_identity_assertion(artifact, sensitive=True), inputs={"member_id": "10001"}, secrets=SECRETS
-    )
+    result = engine.run(artifact, inputs={"member_id": "10001"}, secrets=SECRETS)
 
     assert result.outcome == ReplayOutcome.HARD_FAILURE
     blob = f"{result.error.message} {result.error.expected} {result.error.observed}"

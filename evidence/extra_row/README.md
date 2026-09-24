@@ -15,9 +15,18 @@ discovered.
 
 | artifact | outcome | `savings_balance` | `checking_balance` | exit |
 |---|---|---|---|---|
-| [`position-only`](position-only.txt) | success | **`2019-03-14`** | **`$2340.18`** | 0 |
-| [`label-anchored`](label-anchored.txt) | success | `$2340.18` | `$512.44` | 0 |
+| [`position-only`](position-only.txt) | success | **`***14 [shape: date]`** | **`***18 [shape: money]`** | 0 |
+| [`label-anchored`](label-anchored.txt) | success | `***18 [shape: money]` | `***44 [shape: money]` | 0 |
 | [`position-only-money-typed`](position-only-money-typed.txt) | hard_failure | *(not returned)* | *(not returned)* | 1 |
+
+The balances are masked here, as they are everywhere this project writes a
+value down. The shape hint is what keeps that from destroying the point:
+`***14` and `***18` are equally unreadable, but `[shape: date]` next to
+`[shape: money]` shows a date sitting in a money field without either
+figure landing on disk. The `checking_balance` shapes match in rows 1 and
+2 because the wrong value there *is* money — just the wrong member's line,
+which is exactly why shape alone isn't a sufficient check and the label
+anchor is the real fix.
 
 Row 1 is the failure worth caring about. There is no error, no warning and
 no crash — the locators resolved, returned strings, and the run reported
@@ -68,10 +77,28 @@ each run — that is why the `curl` appears in all three.
 
 ## A note on redaction
 
-These runs deliberately use artifacts that do **not** mark the balances
-`sensitive`, because the comparison's entire content is the values
-themselves: masked to `***14` and `***18`, the point (a date landed in a
-money field) would be invisible. The shipped capability does mark them
-sensitive, and its own run evidence under `evidence/runs/` is masked
-accordingly. This folder is a locator-behaviour demonstration against fake
-data, not a record of a real capability run.
+All three artifacts mark `member_id`, `member_name` and both balances
+`sensitive`, and every value here is masked -- no exceptions, and no
+`--show-sensitive` anywhere in the commands above.
+
+`member_id` was briefly left unmasked, on the grounds that it is only the
+caller's own input echoed back. That was inconsistent: the identity-check
+failure already masks the same ID to `***01`, so printing it in full two
+lines later in the outputs made the rule look arbitrary. A value is either
+sensitive or it is not, and which message it appears in doesn't change
+that. It is now masked as an **input** too, so the `inputs` block of each
+`.result.json` reads `***01 [shape: integer]` rather than filing the
+identical value two lines above the masked output.
+
+The one place the full ID still appears is the `--input member_id=10001`
+in each command above. That is the recipe for reproducing the run, not a
+record of data -- masking it would leave evidence nobody can re-run, the
+same reason `--secret password=teller123` is printed there. Both are fake
+credentials for a fake app, published in the top-level README.
+
+An earlier version of this folder was captured *unmasked*, on the argument
+that masking would destroy the comparison. That was wrong once the shape
+hint existed -- it publishes the one property that matters (what kind of
+value this is) while withholding the value. The earlier reasoning is kept
+in DECISIONS.md rather than deleted, since being talked out of it is part
+of the record.

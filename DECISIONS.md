@@ -987,3 +987,130 @@ unattended. That only works if it can actually be read.
   redaction, so an operator can still correlate "***18" with the balance
   they were asked about. Full redaction makes a failure undebuggable;
   the full value shouldn't be on disk at all.
+
+### Canonicalized destinations, and shape hints for masked values
+
+- **Observed destinations are canonicalized: `/app/member/10001` becomes
+  `/app/member/:member_id`.** The risk labels added in Phase 3 were
+  quietly reintroducing the one thing the rest of the recorder works to
+  keep out -- a real record identifier from one discovery run, baked into
+  a file that is committed and reused for every other member. **This is
+  the canonicalization the brief asks for**, applied to the place it was
+  still leaking. `/app/member/10001` is a fact about one run;
+  `/app/member/:member_id` is a fact about the capability.
+- **Whole path segments only, never substrings.** An input of `"1"` must
+  not turn `/app/member/10001` into `/app/member/:member_id0001`. Tested,
+  because a substring rule looks correct on the one ID you developed
+  against and corrupts every other one.
+- **Navigate URLs are parameterized too, not just canonicalized in the
+  label.** A recorded `navigate` to a record-specific page kept that run's
+  identifier, so replaying it for a different member would have silently
+  fetched the *original* member's page -- a wrong answer, not a crash.
+  `render_value` substitutes placeholders anywhere in a string, so a
+  segment-level `{{inputs.member_id}}` renders correctly at replay.
+- **`InputSpec.example` is no longer filled from the discovery literal.**
+  The recorder is given the literal so it can *recognize* and parameterize
+  it away; storing it back as an example undid exactly that work and left
+  a real member ID in a committed file. The field stays in the schema for
+  an artifact whose example is genuinely safe to publish.
+- **One test asserts no input value survives anywhere in the serialized
+  artifact**, rather than checking each field. The ways a literal can leak
+  back in are not enumerable in advance -- it has now shown up in a step
+  value, a navigate URL, an input example and a risk note, each for a
+  different reason.
+- **Masked values carry a shape hint: `***18 [shape: money]`.** Masking a
+  value and *then* using it as evidence are in tension: `***14` and
+  `***18` are equally unreadable, so a masked record of the extra_row
+  locator bug would have hidden the very thing it exists to show. The
+  shape publishes the one property that matters -- what kind of value this
+  is -- while withholding the value. Off by default; on for outputs and
+  for `format_invalid` errors, where the complaint is *about* the shape
+  and "***14" alone would state the problem while withholding the evidence
+  for it.
+- **Shape patterns live in `guardrails/redact.py`, not reused from
+  `OutputType`.** Guardrails sits below the artifact layer and shouldn't
+  depend on it, and the two answer different questions -- "date" is a
+  shape worth naming when masking and is not a type an artifact declares.
+- **`evidence/extra_row/` is now masked with no exceptions.** It was
+  originally captured unmasked, on the argument that masking would destroy
+  the comparison. That argument was correct until the shape hint existed
+  and wrong afterwards; the folder was regenerated rather than kept as a
+  standing exception to the redaction rule. Recording the reversal here
+  because "we argued for the exception and then removed the need for it"
+  is more useful to a reviewer than a folder that simply looks consistent.
+
+- **`member_id` is sensitive as an output *and* as an input.** It was left
+  unmasked at first on the grounds that it is only the caller's own input
+  echoed back. That was inconsistent: the identity-mismatch error already
+  masked the same ID to `***01`, so printing it in full two lines later
+  made the rule look arbitrary rather than principled. A value is either
+  sensitive or it isn't, and which message it appears in doesn't change
+  that.
+- **`InputSpec.sensitive` added rather than inferring it from a matching
+  output name.** Masking an output while filing the identical value under
+  `"inputs"` two lines above it would be theatre, but name-matching would
+  only protect inputs that happen to be echoed back as outputs -- a narrow
+  rule with an obvious hole. An explicit declaration covers an input that
+  is never displayed, and is additive, which suits the 1.1 bump.
+- **The reproduction command in evidence keeps its literal
+  `--input member_id=10001`.** It is the recipe for re-running the
+  evidence, not a record of data; masking it leaves evidence nobody can
+  reproduce, which is the same reason `--secret password=teller123` is
+  printed there. Both are fake credentials for a fake app, already
+  published in the top-level README.
+
+## Post-review hardening — Phase 4: versioning and regeneration
+
+- **`schema_version` 1.1, artifact `version` 2 — a minor bump, not a
+  major.** Every field added across Phases 1-3 (`must_equal`, `type`,
+  `sensitive`, step `description`/`risk`) is optional and defaults to the
+  old behaviour, so a 1.0 artifact loads and runs exactly as before. That
+  is what "minor" is for, and it is why `ArtifactStep` subclasses `Action`
+  rather than wrapping it -- a wrapper would have restructured `steps` and
+  forced a 2.0.
+- **Older artifacts warn rather than fail.** Refusing 1.0 outright would
+  strand every artifact built before this week for no safety gain; loading
+  it silently would let someone keep running a capability that isn't
+  proving it reached the right record. The warning names the specific
+  thing it predates (`must_equal`) rather than saying "outdated".
+- **Newer artifacts are refused, not partly applied.** Pydantic would
+  happily drop fields it doesn't recognise, and the fields most likely to
+  be new are *checks* -- so running a 1.2 artifact on 1.1 code would mean
+  ignoring the safety it was written with and then reporting success.
+  Forward-compatibility is the wrong default when the unknown parts are
+  the guardrails.
+- **`load_yaml` unwraps the version error.** Pydantic buries a validator's
+  exception under field paths and a docs link. A person told "this
+  artifact is newer than your code, upgrade cua" can act; the same person
+  shown a `value_error` traceback usually can't.
+- **Regenerated from the existing `run_log.json`, with no LLM and no new
+  discovery run.** The point of separating discovery from recording is
+  that re-deriving an artifact shouldn't need the model again -- this pass
+  exercised that claim rather than restating it. Business outcomes were
+  re-attached by re-running the two capture scripts, so their locators
+  still come from really-captured page states rather than being copied
+  forward from the old file.
+- **Tests now exercise the shipped artifact directly** where it carries
+  the thing under test. `_with_identity_assertion` and `_with_money_types`
+  existed to patch capabilities into a copy before the committed file had
+  them; keeping them would have meant the tests no longer proved anything
+  about what actually ships.
+- **The position-only control is built by *removing* anchors from the
+  shipped artifact**, not by using the committed file as-is. Before this
+  phase the extra_row comparison used the committed artifact as its
+  position-only control, which worked only because that file happened not
+  to have anchors yet. The moment it gained them, the control would have
+  quietly become a second copy of the fix and the test would have gone on
+  passing while testing nothing.
+- **`demo_handoff.py` masks its own result file.** It writes evidence
+  directly rather than through the replay CLI, so it doesn't inherit the
+  CLI's masking boundary -- it has to apply the same rule itself. Its
+  assertions still run against the unmasked in-memory values, so the check
+  is on the real figure rather than on its mask.
+- **REPORT.md cut to roughly three pages**, with the long bug narratives
+  (the three password leaks, the proactive/reactive business-outcome
+  interaction, the instant-vs-bounded wait) moved here and linked. They
+  are worth keeping -- they are the evidence that the rules were learned
+  rather than assumed -- but a design write-up that buries its design in
+  war stories is harder to review, which is the same argument as trimming
+  the artifact YAML.

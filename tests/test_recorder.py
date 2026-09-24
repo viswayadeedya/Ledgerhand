@@ -5,7 +5,15 @@ import pytest
 import yaml
 
 from cua.artifacts.recorder import ArtifactBuildError, build_artifact
-from cua.artifacts.schema import CapabilityArtifact, StepRisk, to_yaml
+from cua.artifacts.schema import (
+    CURRENT_SCHEMA_VERSION,
+    CapabilityArtifact,
+    OutdatedArtifactWarning,
+    SchemaVersionError,
+    StepRisk,
+    load_yaml,
+    to_yaml,
+)
 from cua.core.models import (
     Action,
     ActionResult,
@@ -216,7 +224,7 @@ def test_risk_labels_come_from_where_discovery_actually_landed(real_run):
     assert view.risk == StepRisk.SAFE
     # The destination, not the frame the link lived in -- the app is
     # frame-based and the click happened in the nav frame.
-    assert "/app/member/10001" in view.risk_note
+    assert "/app/member/:member_id" in view.risk_note
     assert "observed at discovery" in view.risk_note
     assert "re-checked at replay" in view.risk_note
 
@@ -362,3 +370,161 @@ def test_yaml_round_trips(real_run):
     reloaded = CapabilityArtifact.model_validate(yaml.safe_load(to_yaml(original)))
 
     assert reloaded == original
+
+
+def test_observed_destinations_are_canonicalized_not_pinned_to_one_record(real_run):
+    """The risk note has to say where a step goes without saying whose
+    record it went to. /app/member/10001 is a fact about one discovery run;
+    /app/member/:member_id is a fact about the capability.
+    """
+    data, steps = real_run
+    artifact = _build(data, steps)
+
+    notes = " ".join(s.risk_note for s in artifact.steps)
+    assert "/app/member/:member_id" in notes
+    assert "/app/member/10001" not in notes
+
+
+def test_no_input_value_from_the_discovery_run_survives_anywhere(real_run):
+    """One assertion over the whole serialized artifact, because the ways a
+    literal can leak back in are not enumerable in advance -- it has shown
+    up in a step value, in a navigate URL, in an input example and in a
+    risk note, each for a different reason.
+    """
+    data, steps = real_run
+    artifact = _build(data, steps)
+
+    assert "10001" not in artifact.model_dump_json()
+    assert "10001" not in to_yaml(artifact)
+    assert "{{inputs.member_id}}" in artifact.model_dump_json()  # parameterized, not merely deleted
+
+
+def test_a_navigate_url_holding_a_record_id_is_parameterized():
+    """A recorded navigate to a record-specific page would otherwise replay
+    for the *original* member no matter who was asked for -- a silent wrong
+    answer, not a crash.
+    """
+    steps = [
+        RecordedStep(
+            index=0,
+            tool_name="browser_navigate",
+            action=Action(type=ActionType.NAVIGATE, url="http://127.0.0.1:5055/app/member/10001"),
+            result=ActionResult(
+                success=True,
+                observation=Observation(
+                    url="http://127.0.0.1:5055/app/member/10001",
+                    elements=[ElementSummary(tag="td", text="Savings Balance")],
+                ),
+            ),
+        )
+    ]
+
+    artifact = build_artifact(
+        steps,
+        capability_id="direct",
+        title="x",
+        description="x",
+        target_domain="127.0.0.1:5055",
+        entry_url="http://127.0.0.1:5055/login",
+        discovery_model="manual-test",
+        inputs={"member_id": "10001"},
+        checkpoint_text="Savings Balance",
+    )
+
+    assert artifact.steps[0].url == "http://127.0.0.1:5055/app/member/{{inputs.member_id}}"
+    assert "10001" not in to_yaml(artifact)
+
+
+def test_canonicalization_matches_whole_segments_only():
+    """An input of "1" must not turn /app/member/10001 into
+    /app/member/:member_id0001. Substring replacement on a URL is how you
+    get a locator that works on exactly one member's ID and corrupts every
+    other one.
+    """
+    steps = [
+        RecordedStep(
+            index=0,
+            tool_name="browser_navigate",
+            action=Action(type=ActionType.NAVIGATE, url="http://127.0.0.1:5055/app/member/10001"),
+            result=ActionResult(
+                success=True,
+                observation=Observation(
+                    url="http://127.0.0.1:5055/app/member/10001",
+                    elements=[ElementSummary(tag="td", text="Savings Balance")],
+                ),
+            ),
+        )
+    ]
+
+    artifact = build_artifact(
+        steps,
+        capability_id="direct",
+        title="x",
+        description="x",
+        target_domain="127.0.0.1:5055",
+        entry_url="http://127.0.0.1:5055/login",
+        discovery_model="manual-test",
+        inputs={"digit": "1"},
+        checkpoint_text="Savings Balance",
+    )
+
+    assert artifact.steps[0].url == "http://127.0.0.1:5055/app/member/10001"
+
+
+# -- Phase 4: schema versioning -------------------------------------------
+
+
+def _shipped() -> dict:
+    return yaml.safe_load((REPO_ROOT / "artifacts" / "member-savings-lookup.yaml").read_text(encoding="utf-8"))
+
+
+def test_the_shipped_artifact_is_at_the_current_schema():
+    shipped = _shipped()
+    assert shipped["schema_version"] == CURRENT_SCHEMA_VERSION
+    assert shipped["version"] == 2  # the capability's own revision, not the schema's
+
+
+def test_an_older_artifact_still_loads_but_says_what_it_is_missing():
+    """A 1.0 artifact predates the identity assertion. It runs -- refusing
+    it would strand every artifact built before this week -- but silence
+    would let someone keep running a capability that isn't checking it
+    reached the right record.
+    """
+    older = dict(_shipped(), schema_version="1.0")
+
+    with pytest.warns(OutdatedArtifactWarning, match="must_equal"):
+        artifact = load_yaml(yaml.safe_dump(older))
+
+    assert artifact.id == "member-savings-lookup"  # loaded, not refused
+
+
+def test_a_newer_minor_version_is_refused_rather_than_partly_applied():
+    """The fields most likely to be new are *checks*. Pydantic would drop
+    what it doesn't recognise, so running a 1.2 artifact on 1.1 code means
+    silently ignoring the safety it was written with -- and reporting
+    success.
+    """
+    newer = dict(_shipped(), schema_version="1.2")
+
+    with pytest.raises(SchemaVersionError, match="newer than this code"):
+        load_yaml(yaml.safe_dump(newer))
+
+
+def test_a_different_major_version_is_refused():
+    with pytest.raises(SchemaVersionError, match="different major version"):
+        load_yaml(yaml.safe_dump(dict(_shipped(), schema_version="2.0")))
+
+
+def test_an_unparseable_version_is_refused_not_ignored():
+    with pytest.raises(SchemaVersionError, match="not a MAJOR.MINOR"):
+        load_yaml(yaml.safe_dump(dict(_shipped(), schema_version="banana")))
+
+
+def test_version_refusals_name_the_version_and_what_to_do():
+    """A refusal a person can act on. "value_error" is not one."""
+    with pytest.raises(SchemaVersionError) as exc:
+        load_yaml(yaml.safe_dump(dict(_shipped(), schema_version="2.0")))
+
+    message = str(exc.value)
+    assert "2.0" in message and CURRENT_SCHEMA_VERSION in message
+    assert "python -m cua.artifacts" in message  # how to fix it
