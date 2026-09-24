@@ -226,6 +226,21 @@ project needs.
 | Redaction fixed at each layer it leaked from | A password leaked three times, at three layers (DECISIONS.md, Part 4); each fix has a regression test reproducing the leak |
 | Sensitive values masked with a shape hint: `***18 [shape: money]` | The shape keeps the record useful — a date in a money field stays visible without the figure. The caller gets the value intact; masking applies where things are *written down* |
 | `--show-sensitive` affects the terminal only | Result files and evidence are masked with no flag: they outlive the run and are read by people who weren't part of it |
+| A test scans every committed file under `/evidence` and `/artifacts` | The credential rule is absolute, with no exemption list — a scan carrying a list of files where the password is allowed has stopped being a check. Forbidden values are derived from the fake app's seed data, so the scan can't drift from what it protects. Verified by planting each kind of leak and confirming it fails |
+
+**Discovery transcripts and screenshots are a retention problem, not a
+redaction one.** A discovery run log records what the model actually saw —
+the page text it read, the values it extracted — and a screenshot shows a
+balance as plainly as any JSON, which no text scan will ever catch.
+Masking them doesn't make them safer evidence; it makes them stop being
+evidence, since what they exist to prove is that a model read a real page
+and reached a real answer. In production they would live in
+access-controlled, short-retention storage, never in a repository, and be
+deleted once the artifact they produced is approved — the artifact is the
+durable object, and it never holds those values either way. Here, one file
+(`evidence/discovery-member-lookup/run_log.json`) is exempted from the
+values rule by exact path, with that reasoning written into the test; the
+credential rule still applies to it.
 
 **Limits, stated plainly:**
 

@@ -1664,3 +1664,46 @@ scenario with a real run behind it, and nothing beyond that list.
   the reason in the test: it is rejected before a browser opens, so there
   is nothing to photograph. That is the feature the scenario exists to
   demonstrate, and an unexplained exemption would look like a gap.
+
+### Step 9 — a scan with one rule that has no exceptions
+
+- **The credential rule is absolute; the values rule has exactly one
+  exemption.** Keeping them separate is the whole design. The moment a
+  password scan carries a list of files where the password is permitted, it
+  stops being a check and becomes a record of exceptions, and the second
+  entry is always easier to add than the first. So the commands in
+  `evidence/extra_row/*.txt` and the discovery README now take the password
+  from `$env:TELLER_PASSWORD`, and the literal appears nowhere under
+  `evidence/` or `artifacts/`.
+- **`evidence/extra_row/` stayed frozen where it matters.** Only the
+  command lines changed; the three captured `.result.json` files are
+  untouched. The comparison between them *is* the evidence, and re-running
+  it would quietly turn three different artifacts into three copies of
+  whatever the recorder does today.
+- **`run_log.json` is exempt from the values rule, by exact path, with the
+  reason in the test.** It is the transcript of the genuine LLM run: what
+  the model saw, what it extracted, what it concluded. A masked transcript
+  would not be safer evidence, it would stop being evidence. The exemption
+  is narrow in three ways -- one path, one rule, and two tests guard it:
+  one asserts the file still contains what it is exempted for (an exemption
+  nobody checks is a hole), and one asserts it is still subject to the
+  password rule.
+- **The discovery README was masked, though it sits beside the exempt
+  file.** It quotes the outputs as prose *about* the run; only the
+  transcript itself has the argument for staying unmasked. Drawing the line
+  at the file rather than the folder is what keeps the exemption meaningful.
+- **Forbidden values are derived from `_TEMPLATE_MEMBERS`, not listed.**
+  Adding a member to `data.py` starts guarding that member automatically; a
+  hardcoded list would silently stop covering the data it was written for.
+  Zero balances are skipped -- "0.00" carries no information and would
+  match unrelated text.
+- **The scan was verified by planting leaks.** A scan that passes proves
+  nothing until it has been seen to fail: a password, a balance and a name
+  were each written into a file under `evidence/` in turn, and each was
+  caught. There is also a test that the file list isn't empty, since a glob
+  that stops matching turns every check green.
+- **Screenshots are named as out of scope, not quietly ignored.** A PNG of
+  the detail page shows the balance as plainly as any JSON and no text scan
+  will see it. That is a retention problem rather than a redaction one, and
+  REPORT.md Section 6 now says where such files would live in production
+  and when they would be deleted.

@@ -5,7 +5,7 @@ $ curl -X POST http://127.0.0.1:5055/admin/faults/api \
 
 $ python -m cua.replay --artifact evidence/extra_row/label-anchored.yaml \
     --input member_id=10001 \
-    --secret username=teller1 --secret password=teller123 \
+    --secret username=teller1 --secret password=$env:TELLER_PASSWORD \
     --out evidence/extra_row/label-anchored.result.json
 
 Outcome: success

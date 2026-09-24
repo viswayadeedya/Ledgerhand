@@ -17,7 +17,7 @@ python -m cua.agent \
   --goal "Look up member 10001 and read their current savings balance." \
   --target "http://127.0.0.1:5055/login" \
   --domain "127.0.0.1:5055" \
-  --username teller1 --password teller123 \
+  --username teller1 --password $env:TELLER_PASSWORD \
   --max-steps 20 \
   --evidence-dir "evidence/discovery-member-lookup"
 ```
@@ -26,12 +26,19 @@ python -m cua.agent \
 
 ```json
 {
-  "member_id": "10001",
-  "member_name": "Maria Garcia",
-  "savings_balance": "$2340.18",
-  "checking_balance": "$512.44"
+  "member_id": "***01 [shape: integer]",
+  "member_name": "***ia [shape: text]",
+  "savings_balance": "***18 [shape: money]",
+  "checking_balance": "***44 [shape: money]"
 }
 ```
+
+Masked here the same way every other written-down value is. The unmasked
+figures are in `run_log.json` beside this file, which is deliberately
+exempt from that rule: it is the transcript of what the model actually
+saw, and a masked transcript would stop being evidence that a model read
+this real page and reached this real answer. This README is prose *about*
+the run, so it gets no such exemption.
 
 **Files:**
 - `run_log.json` -- the full structured step log (`RecordedStep` per action:

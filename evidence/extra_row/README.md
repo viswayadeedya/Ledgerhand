@@ -92,9 +92,21 @@ identical value two lines above the masked output.
 
 The one place the full ID still appears is the `--input member_id=10001`
 in each command above. That is the recipe for reproducing the run, not a
-record of data -- masking it would leave evidence nobody can re-run, the
-same reason `--secret password=teller123` is printed there. Both are fake
-credentials for a fake app, published in the top-level README.
+record of data -- masking it would leave evidence nobody can re-run.
+
+The password is *not* treated the same way, and the difference is
+deliberate. A member ID is the caller's own parameter; a credential is a
+credential even when it is fake, and the moment a scan has to carry a list
+of files where the password is allowed, the scan stops being a check and
+becomes a record of exceptions. So the commands above take it from
+`$env:TELLER_PASSWORD`, whose value is in the top-level README, and the
+literal appears in no file under `evidence/` or `artifacts/` at all --
+which a test enforces with no exemption list.
+
+Only the command lines changed here. The captured results below are
+byte-frozen: the comparison *is* the evidence, and rerunning it would
+quietly turn three different artifacts into three copies of whatever the
+recorder does today.
 
 An earlier version of this folder was captured *unmasked*, on the argument
 that masking would destroy the comparison. That was wrong once the shape
