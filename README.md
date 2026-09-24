@@ -153,11 +153,22 @@ python -m cua.replay --artifact "artifacts/member-savings-lookup.yaml" `
 Outcome: `recovered` -- an unexpected dialog fires, replay dismisses it
 itself, and still returns the correct balance. Other faults:
 `member_not_found`, `session_expired`, `slow_load`, `duplicate_members`,
-`wrong_member` (serves a *different* member's page with a 200 and no
-visible error -- caught by the artifact's identity assertion) and
+`permission_denied` (a 403 "Access denied" page), `app_error` (a 500-status
+error page), `wrong_member` (serves a *different* member's page with a 200
+and no visible error -- caught by the artifact's identity assertion) and
 `extra_row` (inserts a row above the balances -- see
 [`evidence/extra_row/`](evidence/extra_row/)). All fire once and disarm
 themselves; see `src/cua/fake_app/faults.py`.
+
+`slow_load` also has a *setting*, since how slow it is decides whether
+replay can ride it out. The default (2s) sits under replay's locator wait
+budget, so an armed `slow_load` is recoverable; raise it past that budget
+and the same fault becomes a hard failure:
+```powershell
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:5055/admin/settings/api" `
+  -ContentType "application/json" -Body '{"name":"slow_load_seconds","value":12}'
+```
+Settings persist until `POST /admin/reset`, unlike faults, which fire once.
 
 **6. Try human handoff**, live, at your own terminal:
 ```powershell

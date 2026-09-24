@@ -20,4 +20,13 @@
 </tr>
 {% endfor %}
 </table>
+<h2>Settings</h2>
+<p>Shape how an armed fault behaves. Unlike faults, these persist until reset.</p>
+<table border="1" cellpadding="4">
+<tr><th>Setting</th><th>Value</th></tr>
+{% for name, value in settings.items() %}
+<tr><td>{{ name }}</td><td>{{ value }}</td></tr>
+{% endfor %}
+</table>
+<p>Set one with <code>POST /admin/settings/api</code> &mdash; <code>{"name": "...", "value": 12}</code>.</p>
 </body></html>

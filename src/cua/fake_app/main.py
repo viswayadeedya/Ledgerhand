@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 
 from cua.fake_app import data
-from cua.fake_app.faults import FAULTS
+from cua.fake_app.faults import FAULTS, SETTINGS
 
 load_dotenv()
 
@@ -134,7 +134,7 @@ def search(request: Request, q: str = ""):
     if isinstance(user, RedirectResponse):
         return user
     if FAULTS.consume("slow_load"):
-        time.sleep(4)
+        time.sleep(SETTINGS.slow_load_seconds)
     ctx = do_search(q)
     return templates.TemplateResponse(request, "search_results.html", ctx)
 
@@ -144,6 +144,17 @@ def member_detail(request: Request, member_id: int):
     user = check_session(request)
     if isinstance(user, RedirectResponse):
         return user
+    # Both fire before the record is even looked up, because neither is
+    # about the record: an entitlement check happens on the way in, and an
+    # app that has fallen over never gets as far as the data.
+    if FAULTS.consume("permission_denied"):
+        return templates.TemplateResponse(
+            request, "permission_denied.html", {"query": str(member_id)}, status_code=403
+        )
+    if FAULTS.consume("app_error"):
+        return templates.TemplateResponse(
+            request, "app_error.html", {"query": str(member_id)}, status_code=500
+        )
     member = data.get_member(member_id)
     if not member:
         return templates.TemplateResponse(request, "not_found.html", {"query": str(member_id)})
@@ -251,7 +262,9 @@ async def subaccount_commit(
 
 @app.get("/admin/faults", response_class=HTMLResponse)
 def admin_faults_page(request: Request):
-    return templates.TemplateResponse(request, "admin_faults.html", {"faults": FAULTS.as_dict()})
+    return templates.TemplateResponse(
+        request, "admin_faults.html", {"faults": FAULTS.as_dict(), "settings": SETTINGS.as_dict()}
+    )
 
 
 @app.post("/admin/faults")
@@ -276,8 +289,37 @@ def admin_faults_api_set(payload: FaultToggle):
     return JSONResponse(FAULTS.as_dict())
 
 
+class SettingValue(BaseModel):
+    name: str
+    value: float
+
+
+@app.get("/admin/settings/api")
+def admin_settings_api_get():
+    return JSONResponse(SETTINGS.as_dict())
+
+
+@app.post("/admin/settings/api")
+def admin_settings_api_set(payload: SettingValue):
+    """Settings get their own endpoint rather than riding on
+    /admin/faults/api's `armed` flag: that field is a bool and the fault
+    dict it maintains is all-bools by contract. Overloading it to carry a
+    duration would make "arm everything" and "disarm everything" ambiguous
+    for the one entry that isn't a switch.
+    """
+    try:
+        SETTINGS.set(payload.name, payload.value)
+    except ValueError as exc:
+        # A misspelled setting name is the caller's mistake, and a script
+        # arming faults in a loop should be told that plainly instead of
+        # reading a stack trace out of a 500.
+        return JSONResponse({"error": str(exc), "known": sorted(SETTINGS.as_dict())}, status_code=400)
+    return JSONResponse(SETTINGS.as_dict())
+
+
 @app.post("/admin/reset")
 def admin_reset():
     data.reset()
     FAULTS.reset()
-    return JSONResponse({"status": "reset", "faults": FAULTS.as_dict()})
+    SETTINGS.reset()
+    return JSONResponse({"status": "reset", "faults": FAULTS.as_dict(), "settings": SETTINGS.as_dict()})

@@ -1114,3 +1114,55 @@ unattended. That only works if it can actually be read.
   rather than assumed -- but a design write-up that buries its design in
   war stories is harder to review, which is the same argument as trimming
   the artifact YAML.
+
+## Post-review hardening — Phase 5: one scenario per named runtime condition
+
+The brief names eight runtime conditions replay has to handle (Section 3.3,
+plus "outright app errors" from Section 1). Four had evidence; four were
+either untested or had no way to occur at all. This phase gives each one a
+scenario with a real run behind it, and nothing beyond that list.
+
+### Step 1 — the two missing faults, and making slow_load cut both ways
+
+- **`permission_denied` answers 403, `app_error` answers 500.** The status
+  codes are the point, not decoration: they are what lets replay tell the
+  two apart without reading either page. A permission denial is a real
+  answer to a well-formed request -- the caller needs to know the teller
+  isn't entitled to that record, and no retry will change it, which is
+  exactly a business outcome. A 500 means the app fell over: nothing about
+  the request was wrong and the same inputs might work in a minute, but
+  nothing here can decide that, so it stops. Classifying those by HTTP
+  status is structural, in the same sense as Phase 1's `error_kind` -- no
+  prose gets pattern-matched, so rewording either page changes nothing.
+- **Both fire before the record is looked up.** An entitlement check
+  happens on the way in, and an app that has crashed never reaches its
+  data. It also avoids a small information leak: a restricted ID that
+  doesn't exist says "access denied" rather than confirming there's no such
+  record.
+- **`slow_load` gains a setting instead of a second fault.** The brief
+  names transient slowness (recoverable) and a slow/failed load (a hard
+  failure) as different conditions, but they are the same fault at
+  different magnitudes -- what separates them is whether the delay fits
+  inside replay's wait budget. Two faults would have encoded that budget in
+  the fake app, in two places, where it would drift from the real one in
+  `resolve_with_wait`. One duration knob keeps the distinction where it
+  actually lives.
+- **Settings are a separate dict from faults, with their own endpoint.**
+  `FaultState.as_dict()` returning all-bools is relied on by the admin page
+  and by the "reset disarms everything" test; a float in that dict makes
+  "arm everything" meaningless for the one entry that isn't a switch.
+  Settings also persist until reset rather than firing once, because a
+  duration describes a fault rather than being an occurrence of one.
+- **The default dropped from 4s to 2s.** 4s was uncomfortably close to the
+  5s locator budget and already past the 3s checkpoint one -- a latent
+  flake that happened not to have fired. 2s is unambiguously inside both,
+  which is what the recoverable case is supposed to demonstrate.
+- **An unknown setting name returns 400, not a 500.** A script arming
+  settings in a loop should be told which name it got wrong; the existing
+  faults endpoint still raises, and is left alone rather than changed as a
+  drive-by.
+- **The duration test's thresholds are deliberately loose.** Windows' sleep
+  and clock granularity is ~16ms, and a 0.5s sleep measures as 0.49 often
+  enough to matter. What's under test is which number was used and that the
+  fault fired once, not the timer's precision -- a threshold sitting exactly
+  on the nominal value tests the platform's clock instead.

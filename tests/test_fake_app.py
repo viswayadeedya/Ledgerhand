@@ -5,6 +5,8 @@ are the fast regression net for the app's own logic (auth, search, faults,
 sub-account flow) without paying browser-launch cost for every case.
 """
 
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -162,6 +164,86 @@ def test_session_expired_fault_redirects_with_flag(client):
     # treated as logged out, not just re-triggering the same fault.
     r2 = client.get("/app", follow_redirects=False)
     assert r2.headers["location"] == "/login"
+
+
+def test_permission_denied_fault_serves_an_access_denied_page(client):
+    """A 403 with a page that says why. Deliberately not a 5xx: the request
+    was understood and answered, which is what makes this a business
+    outcome the caller needs rather than a breakage.
+    """
+    _login(client)
+    client.post("/admin/faults/api", json={"fault": "permission_denied", "armed": True})
+
+    denied = client.get("/app/member/10001")
+    assert denied.status_code == 403
+    assert "Access denied" in denied.text
+    assert "Savings Balance" not in denied.text
+
+    assert "Maria" in client.get("/app/member/10001").text  # fires once
+
+
+def test_app_error_fault_serves_a_500_page(client):
+    _login(client)
+    client.post("/admin/faults/api", json={"fault": "app_error", "armed": True})
+
+    broken = client.get("/app/member/10001")
+    assert broken.status_code == 500
+    assert "System Error" in broken.text
+
+    assert "Maria" in client.get("/app/member/10001").text  # fires once
+
+
+def test_permission_denied_fires_before_the_record_is_looked_up(client):
+    """An entitlement check happens on the way in, so a restricted member ID
+    that doesn't exist still says "access denied" rather than leaking the
+    fact that there's no such record.
+    """
+    _login(client)
+    client.post("/admin/faults/api", json={"fault": "permission_denied", "armed": True})
+
+    r = client.get("/app/member/99999")
+    assert "Access denied" in r.text
+    assert "No member found" not in r.text
+
+
+def test_slow_load_uses_the_configured_duration(client):
+    """The delay comes from the setting, not the old hardcoded 4s -- which
+    is what lets one fault produce both a slow load replay rides out and
+    one it can't.
+
+    Thresholds are loose on purpose: Windows' sleep/clock granularity is
+    ~16ms and a 0.5s sleep routinely measures as 0.49. What's under test is
+    which number was used and that the fault fired once, not the timer's
+    precision.
+    """
+    _login(client)
+    client.post("/admin/settings/api", json={"name": "slow_load_seconds", "value": 0.5})
+    client.post("/admin/faults/api", json={"fault": "slow_load", "armed": True})
+
+    start = time.monotonic()
+    client.get("/app/search", params={"q": "10001"})
+    slow = time.monotonic() - start
+
+    start = time.monotonic()
+    client.get("/app/search", params={"q": "10001"})  # fault auto-disarmed
+    fast = time.monotonic() - start
+
+    assert slow >= 0.4
+    assert fast < 0.2
+
+
+def test_unknown_setting_is_rejected_with_a_usable_error(client):
+    r = client.post("/admin/settings/api", json={"name": "nope", "value": 1})
+    assert r.status_code == 400
+    assert "slow_load_seconds" in r.json()["known"]
+
+
+def test_reset_restores_setting_defaults(client):
+    client.post("/admin/settings/api", json={"name": "slow_load_seconds", "value": 30})
+    assert client.get("/admin/settings/api").json()["slow_load_seconds"] == 30
+
+    client.post("/admin/reset")
+    assert client.get("/admin/settings/api").json()["slow_load_seconds"] == 2.0
 
 
 def test_admin_faults_api_get_and_reset(client):
